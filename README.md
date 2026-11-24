@@ -21,7 +21,7 @@ GymPal is a mobile application for planning workouts and tracking training progr
 
 ## Running the App
 
-GymPal requires a **development build** — Expo Go cannot run the app because it does not include SQLCipher.
+A **development build** is required for an encrypted database. Expo Go still runs the app during development, but stores the database unencrypted in its own sandbox, because Expo Go ships plain SQLite and cannot be rebuilt. The privacy screen says so; the two environments do not share data.
 
 ### 1. Install dependencies
 
@@ -71,11 +71,11 @@ For the database to be encrypted, all of the following must be true:
 |---|---|
 | Binary contains SQLCipher | `expo-sqlite` config plugin with `useSQLCipher: true` in `app.json` |
 | App rebuilt after flag set | `npx expo prebuild --clean`, then rebuild |
-| Build is not Expo Go | Expo Go ships plain SQLite; the app refuses to start without SQLCipher |
+| Build is not Expo Go | Expo Go ships plain SQLite, so it runs unencrypted in development only |
 | Escape hatch off | `EXPO_PUBLIC_ALLOW_UNENCRYPTED_DATABASE` unset, or the bundle is a release build |
 | Key in platform keystore | `expo-secure-store` with `WHEN_UNLOCKED_THIS_DEVICE_ONLY` |
 
-The app verifies all of this at runtime by querying `PRAGMA cipher_version` before writing anything and refusing to run if SQLCipher is missing.
+Expo Go is detected automatically, so an unencrypted development run needs no configuration. Any other run verifies encryption at runtime by querying `PRAGMA cipher_version` before writing anything, and refuses to start if SQLCipher is missing. That refusal means the installed binary is stale: regenerate the native project with `npx expo prebuild --clean` and rebuild it.
 
 ### Privacy and data deletion
 
@@ -225,7 +225,7 @@ The database is encrypted with **SQLCipher**. The key is generated once on the d
 
 1. Read the key from the keystore. If none exists, generate one in memory only.
 2. Open the database and apply the key with `PRAGMA key`.
-3. Check `PRAGMA cipher_version`. In device builds, a missing value means no SQLCipher — the app **refuses to run** before anything is written.
+3. Check `PRAGMA cipher_version`. Except in Expo Go, a missing value means no SQLCipher — the app **refuses to run** before anything is written.
 4. Verify the unlock by reading the schema. A failure means the file belongs to a different key — existing data is left untouched.
 5. Run SQLCipher's integrity check.
 6. Only then is a newly generated key written to the keystore — a key is never trusted before it proves it can read the file.
@@ -266,7 +266,7 @@ Test suites cover:
 | Suite | Covers |
 |---|---|
 | `db-key.test.ts` | Key generation, keychain storage, encryption policy, missing/wrong/corrupt keys, deletion, key never reaching console |
-| `encryption-policy.test.ts` | Browser never encrypts, native builds always do, Expo Go escape hatch |
+| `encryption-policy.test.ts` | Browser never encrypts, native builds always do, Expo Go falls back in development only |
 | `db-schema.test.ts` | Every table, view, index; schema version; migrations idempotent; newer database refused; foreign keys enforced |
 | `db-repositories.test.ts` | Data access layer: constraints, cascades, transactions, session summaries, personal records |
 | `db-persistence.test.ts` | Data and key survive restart; lost key does not replace database |

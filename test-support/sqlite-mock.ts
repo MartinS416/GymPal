@@ -312,15 +312,31 @@ export class MockSQLiteDatabase {
   }
 
   /**
-   * The mock runs the task on the same connection, which keeps the test
-   * simple while still rolling back on failure.
+   * Emulates expo-sqlite opening a second connection.
+   *
+   * The new connection has not run `PRAGMA key`, and SQLCipher keys are per
+   * connection, so the first statement fails with "file is not a database".
+   * Keeping the mock faithful means a regression back to exclusive
+   * transactions on the encrypted database cannot pass the suite.
    */
   async withExclusiveTransactionAsync(
     task: (txn: MockSQLiteDatabase) => Promise<void>
   ): Promise<void> {
-    await this.withTransactionAsync(async () => {
-      await task(this);
-    });
+    const transaction = new MockSQLiteDatabase(this.databasePath);
+    try {
+      await transaction.execAsync('BEGIN');
+      await task(transaction);
+      await transaction.execAsync('COMMIT');
+    } catch (error) {
+      try {
+        await transaction.execAsync('ROLLBACK');
+      } catch {
+        // SQLite may have rolled back already.
+      }
+      throw error;
+    } finally {
+      await transaction.closeAsync();
+    }
   }
 
   isInTransactionAsync(): Promise<boolean> {

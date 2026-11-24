@@ -49,6 +49,7 @@ export {
   writeDatabaseKey,
 } from '@/db/key';
 export {
+  isExpoGo,
   isUnencryptedDevBuild,
   isWebPreview,
   supportsEncryption,

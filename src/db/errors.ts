@@ -54,7 +54,7 @@ export class EncryptionUnavailableError extends DatabaseError {
     super(
       'ENCRYPTION_UNAVAILABLE',
       'Encryption unavailable',
-      'Expo Go and builds made before SQLCipher was enabled cannot encrypt the database, so the app refuses to start. Open a development build of GymPal instead — see "Running the app" in the README.',
+      'This build of GymPal was made without SQLCipher, so it cannot protect the database and will not start. Rebuild the app with SQLCipher enabled — see "Running the app" in the README.',
       options
     );
     this.name = 'EncryptionUnavailableError';

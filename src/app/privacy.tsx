@@ -76,7 +76,7 @@ export default function PrivacyScreen() {
         ) : isUnencryptedDevBuild ? (
           <Section
             title="How it is stored"
-            body="This is a development run with encryption switched off, because Expo Go ships without SQLCipher. The database lives in Expo Go's sandbox as a plain SQLite file. A development build of GymPal encrypts the same database on the device."
+            body="This is a development run with encryption switched off. Expo Go ships without SQLCipher, and a development build only skips it when explicitly asked. The data lives in a plain SQLite file in this app's sandbox. A development build of GymPal with SQLCipher enabled encrypts the same data on the device."
           />
         ) : (
           <Section
@@ -94,7 +94,7 @@ export default function PrivacyScreen() {
             supportsEncryption
               ? 'There is no cloud copy. If the database or the key is lost — through a device failure, a restore that does not include the keychain, or a reinstall that clears the key — the data cannot be recovered. GymPal will tell you rather than quietly starting over with an empty database.'
               : isUnencryptedDevBuild
-                ? 'There is no cloud copy. Deleting Expo Go, or clearing its data, removes this database. When you move to a development build, GymPal starts with its own encrypted database; the two do not share data.'
+                ? 'There is no cloud copy. Removing this development app, or clearing its data, removes this database. A development build with SQLCipher enabled uses its own encrypted database; the two do not share data.'
                 : 'There is no cloud copy. If this browser’s storage is cleared, the data cannot be recovered. GymPal will tell you rather than quietly starting over with an empty database.'
           }
         />

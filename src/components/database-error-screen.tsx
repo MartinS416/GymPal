@@ -27,6 +27,10 @@ export function DatabaseErrorScreen({
   const [deleting, setDeleting] = useState(false);
   const [confirming, setConfirming] = useState(false);
 
+  // A binary without SQLCipher cannot be fixed from the app: the data is
+  // untouched and deleting it would only lose it. Point at the rebuild.
+  const binaryProblem = error?.code === 'ENCRYPTION_UNAVAILABLE';
+
   const handleDelete = async () => {
     if (!confirming) {
       setConfirming(true);
@@ -57,24 +61,31 @@ export function DatabaseErrorScreen({
       <View style={styles.actions}>
         <Button label="Try again" onPress={onRetry} testID="database-retry" />
 
-        <View style={styles.secondaryActions}>
-          {confirming ? (
-            <Text variant="caption" style={styles.warning}>
-              This permanently removes every workout, plan and measurement stored on this
-              device. It cannot be undone.
-            </Text>
-          ) : null}
-          <Button
-            label={confirming ? 'Confirm deletion' : 'Delete all local data'}
-            variant="secondary"
-            loading={deleting}
-            onPress={handleDelete}
-            testID="database-delete-data"
-          />
-          {confirming ? (
-            <Button label="Keep my data" variant="ghost" onPress={() => setConfirming(false)} />
-          ) : null}
-        </View>
+        {binaryProblem ? (
+          <Text variant="caption" tone="textSecondary" style={styles.warning}>
+            Rebuild the app with SQLCipher enabled: npx expo prebuild --clean, then npx expo
+            run:ios or npx expo run:android.
+          </Text>
+        ) : (
+          <View style={styles.secondaryActions}>
+            {confirming ? (
+              <Text variant="caption" style={styles.warning}>
+                This permanently removes every workout, plan and measurement stored on this
+                device. It cannot be undone.
+              </Text>
+            ) : null}
+            <Button
+              label={confirming ? 'Confirm deletion' : 'Delete all local data'}
+              variant="secondary"
+              loading={deleting}
+              onPress={handleDelete}
+              testID="database-delete-data"
+            />
+            {confirming ? (
+              <Button label="Keep my data" variant="ghost" onPress={() => setConfirming(false)} />
+            ) : null}
+          </View>
+        )}
       </View>
     </Screen>
   );
