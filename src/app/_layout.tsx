@@ -1,18 +1,56 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { useEffect, useState } from 'react';
+import { Stack } from 'expo-router';
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+import { LoadingScreen } from '@/components/loading-screen';
+import { colors } from '@/constants/theme';
+import { DatabaseProvider } from '@/db/database-provider';
+import { ProfileProvider } from '@/state/profile-context';
 
-SplashScreen.preventAutoHideAsync();
+/**
+ * Root layout.
+ *
+ * Shows the GymPal launch loading screen with the barbell and loaded plates
+ * before transitioning to the unlocked, encrypted database and app views.
+ */
+export default function RootLayout() {
+  const [launching, setLaunching] = useState(process.env.NODE_ENV !== 'test');
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
+  useEffect(() => {
+    if (process.env.NODE_ENV === 'test') {
+      return;
+    }
+    const timer = setTimeout(() => {
+      setLaunching(false);
+    }, 1100);
+    return () => clearTimeout(timer);
+  }, []);
+
+  if (launching) {
+    return <LoadingScreen label="Starting GymPal…" />;
+  }
+
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <DatabaseProvider>
+      <ProfileProvider>
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: colors.background },
+            animation: 'fade',
+          }}>
+          <Stack.Screen name="(tabs)" />
+          <Stack.Screen name="onboarding" />
+          <Stack.Screen name="start" />
+          <Stack.Screen name="plans" />
+          <Stack.Screen name="plans/[planId]" />
+          <Stack.Screen name="workouts/index" />
+          <Stack.Screen name="workouts/[workoutId]" />
+          <Stack.Screen name="progress/[metricKey]" />
+          <Stack.Screen name="session/[sessionId]" />
+          <Stack.Screen name="sessions/[sessionId]" />
+          <Stack.Screen name="privacy" />
+        </Stack>
+      </ProfileProvider>
+    </DatabaseProvider>
   );
 }
