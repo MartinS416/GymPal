@@ -3,7 +3,6 @@ import { Pressable, StyleSheet, View } from 'react-native';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 
 import { BackButton } from '@/components/back-button';
-import { BottomSheet } from '@/components/bottom-sheet';
 import { Button } from '@/components/button';
 import { Card, Divider } from '@/components/card';
 import { LoadingScreen } from '@/components/loading-screen';
@@ -12,39 +11,30 @@ import { ScreenHeader } from '@/components/screen-header';
 import { EmptyState } from '@/components/states';
 import { Text } from '@/components/text';
 import { Field } from '@/components/text-input';
-import { colors, radius, spacing } from '@/constants/theme';
+import { spacing } from '@/constants/theme';
 import { useDatabase } from '@/db/database-provider';
 import type { SessionDetail } from '@/db/repositories/sessions';
 
 import { useAsyncData } from '@/hooks/use-async-data';
 import { useProfile } from '@/state/profile-context';
 import { formatDuration, formatSessionDate, formatTimeOfDay } from '@/workouts/timer';
-import { formatDecimal, kgToLb } from '@/lib/units';
+import { kgToLb } from '@/lib/units';
 import { normalizeSetConfiguration } from '@/workouts/set-types';
 
 /**
  * A finished session.
  *
- * The summary of what was done: the exercises, the sets, the reps and the
- * volume.
+ * The summary of what was done, edited in place: every logged set is an
+ * editable weight and reps field, skipped sets stay marked, and adding or
+ * removing a set happens right on the card.
  */
 export default function SessionDetailScreen() {
   const router = useRouter();
   const database = useDatabase();
   const { status, profile } = useProfile();
   const system = profile?.system ?? 'metric';
+  const unit = system === 'imperial' ? 'lb' : 'kg';
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
-  const [editing, setEditing] = useState<{
-    exercise: SessionDetail['exercises'][number];
-    set: SessionDetail['sets'][number] | null;
-    setNumber: number;
-  } | null>(null);
-  const [weight, setWeight] = useState('');
-  const [reps, setReps] = useState('');
-  const [rpe, setRpe] = useState('');
-  const [editError, setEditError] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  const [confirmDelete, setConfirmDelete] = useState(false);
 
   const loader = useCallback(() => {
     const id = Number(sessionId);
@@ -57,94 +47,6 @@ export default function SessionDetailScreen() {
     });
   }, [database, sessionId]);
   const { data: detail, loading, reload } = useAsyncData(loader);
-
-  const openEditor = useCallback((
-    exercise: SessionDetail['exercises'][number],
-    set: SessionDetail['sets'][number] | null
-  ) => {
-    setEditing({
-      exercise,
-      set,
-      setNumber: set?.setNumber ?? 1,
-    });
-    setWeight(set?.weightKg == null ? '' : String(
-      system === 'imperial' ? Number(kgToLb(set.weightKg).toFixed(1)) : set.weightKg
-    ));
-    setReps(set?.reps == null ? '' : String(set.reps));
-    setRpe(set?.rpe == null ? '' : String(set.rpe));
-    setEditError(null);
-    setConfirmDelete(false);
-  }, [system]);
-
-  const saveSet = useCallback(async () => {
-    if (!editing || !detail) {
-      return;
-    }
-    const displayedWeight = weight.trim() === '' ? null : Number(weight.replace(',', '.'));
-    const parsedWeight = displayedWeight === null
-      ? null
-      : system === 'imperial'
-        ? displayedWeight / 2.2046226218
-        : displayedWeight;
-    const parsedReps = reps.trim() === '' ? null : Number(reps);
-    const parsedRpe = rpe.trim() === '' ? null : Number(rpe);
-    if (parsedWeight !== null && (!Number.isFinite(parsedWeight) || parsedWeight < 0 || parsedWeight > 500)) {
-      setEditError(system === 'imperial'
-        ? 'Enter a weight between 0 and 1,102 lb.'
-        : 'Enter a weight between 0 and 500 kg.');
-      return;
-    }
-    if (parsedReps !== null && (!Number.isInteger(parsedReps) || parsedReps < 0 || parsedReps > 500)) {
-      setEditError('Enter a whole number of reps between 0 and 500.');
-      return;
-    }
-    if (parsedRpe !== null && (!Number.isFinite(parsedRpe) || parsedRpe < 1 || parsedRpe > 10)) {
-      setEditError('RPE must be between 1 and 10.');
-      return;
-    }
-
-    setSaving(true);
-    setEditError(null);
-    try {
-      await database.logSet({
-        sessionId: detail.id,
-        exerciseId: editing.exercise.exerciseId,
-        setNumber: editing.setNumber,
-        weightKg: parsedWeight,
-        reps: parsedReps,
-        rpe: parsedRpe,
-        isCompleted: true,
-        completedAt: editing.set?.completedAt ?? Date.now(),
-        setKind: editing.set?.setKind ?? 'straight',
-        plannedSetNumber: editing.set?.plannedSetNumber ?? editing.setNumber,
-        segmentNumber: editing.set?.segmentNumber ?? 1,
-        supersetRound: editing.set?.supersetRound ?? null,
-      });
-      await database.recalculateRecordsForSession(detail.id);
-      setEditing(null);
-      reload();
-    } catch {
-      setEditError('This set could not be saved. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  }, [database, detail, editing, reload, reps, rpe, system, weight]);
-
-  const deleteSet = useCallback(async () => {
-    if (!editing?.set || !detail) return;
-    setSaving(true);
-    try {
-      await database.deleteSet(editing.set.id);
-      await database.recalculatePersonalRecords(editing.exercise.exerciseId);
-      setEditing(null);
-      setConfirmDelete(false);
-      reload();
-    } catch {
-      setEditError('This set could not be deleted. Please try again.');
-    } finally {
-      setSaving(false);
-    }
-  }, [database, detail, editing, reload]);
 
   if (status === 'loading') {
     return <LoadingScreen label="Loading your profile" />;
@@ -179,8 +81,93 @@ export default function SessionDetailScreen() {
   const volume = system === 'imperial' ? kgToLb(detail.totalVolumeKg) : detail.totalVolumeKg;
   const volumeUnit = system === 'imperial' ? 'lb' : 'kg';
 
+  const saveSet = async (
+    exercise: SessionDetail['exercises'][number],
+    set: SessionDetail['sets'][number],
+    values: { weight: string; reps: string }
+  ): Promise<string | null> => {
+    const displayedWeight = values.weight.trim() === '' ? null : Number(values.weight.replace(',', '.'));
+    const parsedWeight = displayedWeight === null
+      ? null
+      : system === 'imperial'
+        ? displayedWeight / 2.2046226218
+        : displayedWeight;
+    const parsedReps = values.reps.trim() === '' ? null : Number(values.reps);
+    if (parsedWeight !== null && (!Number.isFinite(parsedWeight) || parsedWeight < 0 || parsedWeight > 500)) {
+      return system === 'imperial'
+        ? 'Enter a weight between 0 and 1,102 lb.'
+        : 'Enter a weight between 0 and 500 kg.';
+    }
+    if (parsedReps !== null && (!Number.isInteger(parsedReps) || parsedReps < 0 || parsedReps > 500)) {
+      return 'Enter a whole number of reps between 0 and 500.';
+    }
+    try {
+      await database.logSet({
+        sessionId: detail.id,
+        exerciseId: exercise.exerciseId,
+        setNumber: set.setNumber,
+        weightKg: parsedWeight,
+        reps: parsedReps,
+        rpe: set.rpe,
+        isCompleted: true,
+        completedAt: set.completedAt,
+        setKind: set.setKind,
+        plannedSetNumber: set.plannedSetNumber,
+        segmentNumber: set.segmentNumber,
+        supersetRound: set.supersetRound,
+      });
+      await database.recalculateRecordsForSession(detail.id);
+      await reload();
+      return null;
+    } catch {
+      return 'This set could not be saved. Please try again.';
+    }
+  };
+
+  const deleteSet = async (set: SessionDetail['sets'][number], exerciseId: number) => {
+    try {
+      await database.deleteSet(set.id);
+      await database.recalculatePersonalRecords(exerciseId);
+      await reload();
+    } catch {
+      // The list simply refreshes and the set is still there.
+    }
+  };
+
+  const addSet = async (exercise: SessionDetail['exercises'][number]) => {
+    const setNumber = detail.sets
+      .filter((set) => set.exerciseId === exercise.exerciseId)
+      .reduce((max, set) => Math.max(max, set.setNumber), 0) + 1;
+    try {
+      await database.logSet({
+        sessionId: detail.id,
+        exerciseId: exercise.exerciseId,
+        setNumber,
+        weightKg: null,
+        reps: null,
+        rpe: null,
+        isCompleted: true,
+        setKind: 'straight',
+        plannedSetNumber: setNumber,
+        segmentNumber: 1,
+        supersetRound: null,
+      });
+      await reload();
+    } catch {
+      // Adding failed; nothing appears. A retry is available on the card.
+    }
+  };
+
   return (
-    <Screen>
+    <Screen
+      footer={
+        <Button
+          label="Finish"
+          variant="primary"
+          onPress={() => router.replace('/(tabs)/home')}
+          testID="session-finish"
+        />
+      }>
       <BackButton onPress={() => router.back()} testID="session-back" />
 
       <View style={styles.header}>
@@ -246,167 +233,163 @@ export default function SessionDetailScreen() {
                   <>
                     <Divider style={styles.divider} />
                     <View style={styles.sets}>
-                      {exerciseSets.map((set) => (
-                        <Pressable
-                          key={set.id}
-                          accessibilityRole="button"
-                          accessibilityLabel={`Edit ${setStyleLabel(set)}, ${formatSet(set.weightKg, set.reps, system)}`}
-                          onPress={() => openEditor(exercise, set)}
-                          style={({ pressed }) => [styles.setRow, pressed ? styles.pressed : null]}
-                          testID={`edit-set-${set.id}`}>
-                          <Text variant="caption" tone="textTertiary" style={styles.setNumber}>
-                            {set.setKind === 'warmup'
-                              ? `W${set.segmentNumber}`
-                              : set.setKind === 'drop'
-                                ? `${set.plannedSetNumber ?? set.setNumber}.${set.segmentNumber}`
-                                : set.plannedSetNumber ?? set.setNumber}
-                          </Text>
-                          <Text variant="body" style={styles.setValue}>
-                            {set.isCompleted ? formatSet(set.weightKg, set.reps, system) : 'Skipped'}
-                          </Text>
-                          <Text variant="caption" tone="textTertiary" style={styles.setRpe}>
-                            {setRowHint(set)}
-                          </Text>
-                        </Pressable>
-                      ))}
+                      {exerciseSets.map((set) =>
+                        set.isCompleted ? (
+                          <EditableSetRow
+                            key={set.id}
+                            row={set}
+                            unit={unit}
+                            onSave={(values) => saveSet(exercise, set, values)}
+                            onRemove={() => deleteSet(set, exercise.exerciseId)}
+                          />
+                        ) : (
+                          <SkippedSetRow key={set.id} set={set} />
+                        )
+                      )}
                     </View>
                   </>
                 ) : null}
-                <Button
-                  label={exerciseSets.length > 0 ? 'Add set' : 'Log a set'}
-                  variant="secondary"
-                  size="md"
-                  onPress={() => {
-                    const nextSetNumber = exerciseSets.reduce(
-                      (max, set) => Math.max(max, set.setNumber),
-                      0
-                    ) + 1;
-                    openEditor(exercise, null);
-                    setEditing({ exercise, set: null, setNumber: nextSetNumber });
-                  }}
-                  testID={`add-session-set-${exercise.id}`}
-                />
+                <Pressable
+                  accessibilityRole="button"
+                  onPress={() => void addSet(exercise)}
+                  style={({ pressed }) => [styles.addRow, pressed ? styles.addRowPressed : null]}
+                  testID={`add-session-set-${exercise.id}`}>
+                  <Text variant="label">+ Add set</Text>
+                </Pressable>
               </Card>
             );
           })}
         </View>
       )}
-
-      <BottomSheet
-        visible={editing !== null}
-        onClose={() => setEditing(null)}
-        title={editing?.set ? `Edit set ${editing.setNumber}` : `Log set ${editing?.setNumber ?? ''}`}
-        testID="session-set-editor">
-        <Text variant="caption" tone="textSecondary">
-          {editing?.exercise.name} · Changes update this workout summary and your progress records.
-        </Text>
-        <View style={styles.editFields}>
-          <Field
-            label="Weight"
-            value={weight}
-            onChangeText={setWeight}
-            keyboardType="decimal-pad"
-            suffix={system === 'imperial' ? 'lb' : 'kg'}
-            placeholder="0"
-            testID="session-edit-weight"
-            style={styles.editField}
-          />
-          <Field
-            label="Reps"
-            value={reps}
-            onChangeText={setReps}
-            keyboardType="number-pad"
-            placeholder="0"
-            testID="session-edit-reps"
-            style={styles.editField}
-          />
-        </View>
-        <Field
-          label="RPE"
-          value={rpe}
-          onChangeText={setRpe}
-          keyboardType="decimal-pad"
-          placeholder="Optional"
-          helper="Rate of perceived exertion, from 1 to 10."
-          testID="session-edit-rpe"
-        />
-        {confirmDelete ? (
-          <View style={styles.deleteConfirm}>
-            <Text variant="caption" tone="danger">
-              Delete this logged set? This cannot be undone.
-            </Text>
-            <Button
-              label="Delete set"
-              variant="secondary"
-              loading={saving}
-              onPress={() => void deleteSet()}
-              testID="confirm-delete-session-set"
-            />
-            <Button
-              label="Keep set"
-              variant="ghost"
-              disabled={saving}
-              onPress={() => setConfirmDelete(false)}
-            />
-          </View>
-        ) : null}
-        {editError ? <Text variant="caption" tone="danger">{editError}</Text> : null}
-        <Button
-          label="Save set"
-          onPress={() => void saveSet()}
-          loading={saving}
-          testID="save-session-set"
-        />
-        <Button
-          label="Cancel"
-          variant="ghost"
-          onPress={() => setEditing(null)}
-          disabled={saving}
-          testID="cancel-session-set-edit"
-        />
-        {editing?.set && !confirmDelete ? (
-          <Button
-            label="Delete set"
-            variant="ghost"
-            onPress={() => setConfirmDelete(true)}
-            testID="delete-session-set"
-          />
-        ) : null}
-      </BottomSheet>
     </Screen>
   );
 }
 
-/** A set, the way it is written in a log book: `60 kg × 8`. */
-function formatSet(weightKg: number | null, reps: number | null, system: 'metric' | 'imperial'): string {
-  const weight = weightKg === null
-    ? null
-    : system === 'imperial'
-      ? `${Math.round(kgToLb(weightKg))} lb`
-      : `${formatDecimal(weightKg)} kg`;
-  if (weightKg === null && reps === null) {
-    return '—';
-  }
-  if (weightKg === null) {
-    return `× ${reps}`;
-  }
-  if (reps === null) {
-    return weight ?? '—';
-  }
-  return `${weight} × ${reps}`;
+/**
+ * A completed set, edited where it is shown. Weight and reps start from the
+ * logged value (or empty if none was entered) and save when the field loses
+ * focus. The set stays on screen while its fields remain editable.
+ */
+function EditableSetRow({
+  row,
+  unit,
+  onSave,
+  onRemove,
+}: {
+  row: SessionDetail['sets'][number];
+  unit: 'kg' | 'lb';
+  onSave: (values: { weight: string; reps: string }) => Promise<string | null>;
+  onRemove: () => void | Promise<void>;
+}) {
+  const numberLabel = row.setKind === 'warmup'
+    ? `W${row.segmentNumber}`
+    : row.setKind === 'drop'
+      ? `${row.plannedSetNumber ?? row.setNumber}.${row.segmentNumber}`
+      : String(row.plannedSetNumber ?? row.setNumber);
+
+  const initialWeight = row.weightKg == null
+    ? ''
+    : String(unit === 'lb' ? Number(kgToLb(row.weightKg).toFixed(1)) : row.weightKg);
+  const initialReps = row.reps == null ? '' : String(row.reps);
+
+  const [weight, setWeight] = useState(initialWeight);
+  const [reps, setReps] = useState(initialReps);
+  const [error, setError] = useState<string | null>(null);
+  const [removing, setRemoving] = useState(false);
+
+  const commit = async () => {
+    if (weight === initialWeight && reps === initialReps) {
+      return;
+    }
+    setError(await onSave({ weight, reps }));
+  };
+
+  const remove = async () => {
+    setRemoving(true);
+    try {
+      await onRemove();
+    } finally {
+      setRemoving(false);
+    }
+  };
+
+  return (
+    <View style={styles.setBlock} testID={`set-${row.id}`}>
+      <View style={styles.setHead}>
+        <Text variant="caption" tone="textTertiary" style={styles.setNumber}>
+          {numberLabel}
+        </Text>
+        <Text variant="caption" tone="textTertiary" style={styles.setHint}>
+          {setKindHint(row)}
+        </Text>
+        <Pressable
+          accessibilityRole="button"
+          onPress={() => void remove()}
+          disabled={removing}
+          style={[styles.setRemove, removing ? styles.setRemoveDisabled : null]}
+          testID={`remove-set-${row.id}`}>
+          <Text variant="caption" tone="danger">
+            {removing ? 'Removing…' : 'Remove'}
+          </Text>
+        </Pressable>
+      </View>
+      <View style={styles.setFields}>
+        <Field
+          label="Weight"
+          value={weight}
+          onChangeText={(value) => {
+            setWeight(value);
+            if (error) setError(null);
+          }}
+          keyboardType="decimal-pad"
+          suffix={unit}
+          placeholder="0"
+          invalid={Boolean(error)}
+          onBlur={() => void commit()}
+          testID={`session-set-${row.id}-weight`}
+          style={styles.setField}
+        />
+        <Field
+          label="Reps"
+          value={reps}
+          onChangeText={(value) => {
+            setReps(value);
+            if (error) setError(null);
+          }}
+          keyboardType="number-pad"
+          placeholder="0"
+          onBlur={() => void commit()}
+          onSubmitEditing={() => void commit()}
+          returnKeyType="done"
+          testID={`session-set-${row.id}-reps`}
+          style={styles.setField}
+        />
+      </View>
+      {error ? <Text variant="caption" tone="danger">{error}</Text> : null}
+    </View>
+  );
 }
 
-function setStyleLabel(set: SessionDetail['sets'][number]): string {
-  if (set.setKind === 'warmup') return `warm-up set ${set.segmentNumber}`;
-  if (set.setKind === 'amrap') return `AMRAP set ${set.plannedSetNumber ?? set.setNumber}`;
-  if (set.setKind === 'drop') return set.segmentNumber === 1
-    ? `drop set main effort ${set.plannedSetNumber ?? set.setNumber}`
-    : `drop ${set.segmentNumber - 1} for set ${set.plannedSetNumber ?? set.setNumber}`;
-  return `set ${set.plannedSetNumber ?? set.setNumber}`;
+/** A set that was not completed — shown as a quiet record, never editable. */
+function SkippedSetRow({ set }: { set: SessionDetail['sets'][number] }) {
+  const numberLabel = set.setKind === 'warmup'
+    ? `W${set.segmentNumber}`
+    : set.setKind === 'drop'
+      ? `${set.plannedSetNumber ?? set.setNumber}.${set.segmentNumber}`
+      : String(set.plannedSetNumber ?? set.setNumber);
+  return (
+    <View style={styles.skippedRow} testID={`skipped-set-${set.id}`}>
+      <Text variant="caption" tone="textTertiary" style={styles.setNumber}>
+        {numberLabel}
+      </Text>
+      <Text variant="body" style={styles.skippedValue}>
+        Skipped
+      </Text>
+    </View>
+  );
 }
 
-function setRowHint(set: SessionDetail['sets'][number]): string {
-  if (!set.isCompleted) return 'Skipped';
+function setKindHint(set: SessionDetail['sets'][number]): string {
   const labels = [
     set.setKind === 'warmup'
       ? 'Warm-up'
@@ -418,7 +401,7 @@ function setRowHint(set: SessionDetail['sets'][number]): string {
     set.supersetRound !== null ? `Round ${set.supersetRound}` : null,
     set.rpe !== null ? `RPE ${set.rpe}` : null,
   ].filter((value): value is string => value !== null);
-  return labels.join(' · ') || 'Edit';
+  return labels.join(' · ');
 }
 
 function Stat({
@@ -429,7 +412,8 @@ function Stat({
   label: string;
   value: string;
   testID?: string;
-}) {  return (
+}) {
+  return (
     <View style={styles.stat} testID={testID}>
       <Text variant="eyebrow">{label}</Text>
       <Text variant="metric">{value}</Text>
@@ -474,42 +458,50 @@ const styles = StyleSheet.create({
     marginVertical: spacing.xs,
   },
   sets: {
+    gap: spacing.md,
+  },
+  setBlock: {
     gap: spacing.sm,
   },
-  setRow: {
+  setHead: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.base,
+    gap: spacing.sm,
   },
   setNumber: {
-    width: 20,
+    width: 24,
   },
-  setRpe: {
-    marginLeft: 'auto',
-  },
-  setValue: {
+  setHint: {
     flex: 1,
   },
-  pressed: {
-    opacity: 0.55,
+  setRemove: {
+    paddingVertical: spacing.xs,
+    paddingLeft: spacing.sm,
   },
-  editFields: {
+  setRemoveDisabled: {
+    opacity: 0.5,
+  },
+  setFields: {
     flexDirection: 'row',
     gap: spacing.md,
   },
-  editField: {
+  setField: {
     flex: 1,
   },
-  deleteConfirm: {
-    gap: spacing.sm,
-    padding: spacing.md,
-    borderRadius: radius.md,
-    backgroundColor: colors.dangerSurface,
+  skippedRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.base,
+    paddingVertical: spacing.sm,
   },
-  radius: {
-    borderRadius: radius.pill,
+  skippedValue: {
+    color: '#A1A1A7',
   },
-  colors: {
-    backgroundColor: colors.background,
+  addRow: {
+    paddingVertical: spacing.md,
+    alignItems: 'center',
+  },
+  addRowPressed: {
+    opacity: 0.55,
   },
 });

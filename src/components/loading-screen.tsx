@@ -1,5 +1,5 @@
 import { Animated, Easing, StyleSheet, View } from 'react-native';
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
 import { Text } from '@/components/text';
@@ -10,99 +10,117 @@ export type LoadingScreenProps = {
   label?: string;
 };
 
+// Bumper plates share the same diameter and differ only by color; the 10 is
+// half the thickness. Colors follow the requested (deliberate) weight coding.
+const PLATE_HEIGHT = 62;
+const PLATE_DEFS = {
+  45: { color: '#1C6DD0', width: 11.25 },
+  35: { color: '#D6382E', width: 11.25 },
+  25: { color: '#2E9E4F', width: 11.25 },
+  10: { color: '#E7B23C', width: 5.625 },
+};
+const WEIGHTS = [45, 35, 25, 10] as const;
+type Weight = (typeof WEIGHTS)[number];
+
+const LOAD_COUNT = 3;
+
+// Plates butt against the flange inner face (x=40) and stack outward.
+const FLANGE_INNER_X = 40;
+const GAP = 1.5;
+const SLIDE_DISTANCE = 52;
+
+const IN_DUR = 420;
+const IN_STAGGER = 180;
+const OUT_DUR = 380;
+const OUT_STAGGER = 120;
+const HOLD = 1000;
+const LOOP_GAP = 350;
+
+// Pick LOAD_COUNT plates at random (multiples allowed), then order heaviest
+// first so they load inward-out and strip the reverse.
+function pickPlates(): Weight[] {
+  return Array.from({ length: LOAD_COUNT }, () => WEIGHTS[Math.floor(Math.random() * WEIGHTS.length)]).sort(
+    (a, b) => b - a
+  );
+}
+
 /**
  * App launch and state loading screen.
  *
- * Displays the GymPal brand with a finely-crafted barbell and plates loaded,
- * maintaining the monochrome design language of the app.
+ * Displays the GymPal brand with a barbell whose colored bumper plates load on
+ * one at a time (heaviest first), hold, then strip off, looping with a bounce.
+ * The mix of plates is randomized each time the screen mounts.
  */
 export function LoadingScreen({ label }: LoadingScreenProps) {
   const insets = useSafeAreaInsets();
 
-  // Animation values initialized via useState for React 19 compatibility
-  const [loadProgress] = useState(() => new Animated.Value(0));
-  const [pulseAnim] = useState(() => new Animated.Value(1));
+  const [chosen] = useState<Weight[]>(() => pickPlates());
+  const [plateAnims] = useState(() => chosen.map(() => new Animated.Value(0)));
+
+  // Seat offsets derived from the chosen widths so the stack hugs the flange.
+  const layout = useMemo(() => {
+    const widths = chosen.map((weight) => PLATE_DEFS[weight].width);
+    return chosen.map((weight, index) => {
+      const def = PLATE_DEFS[weight];
+      const consumed = widths.slice(0, index).reduce((sum, width) => sum + width + GAP, 0);
+      return { weight, ...def, seat: FLANGE_INNER_X - consumed - def.width };
+    });
+  }, [chosen]);
 
   useEffect(() => {
-    // Plates slide on and settle firmly on the barbell
-    const loadAnim = Animated.timing(loadProgress, {
-      toValue: 1,
-      duration: 750,
-      easing: Easing.out(Easing.cubic),
-      useNativeDriver: true,
+    const lastInEnd = (plateAnims.length - 1) * IN_STAGGER + IN_DUR;
+    const offBase = lastInEnd + HOLD;
+
+    const bounceIn = Easing.out(Easing.back(1.6));
+    const slideOut = Easing.in(Easing.cubic);
+
+    const plateSequences = plateAnims.map((value, i) => {
+      const inStart = i * IN_STAGGER;
+      const inEnd = inStart + IN_DUR;
+      // Strip the outermost plate first, working inward.
+      const outStart = offBase + (plateAnims.length - 1 - i) * OUT_STAGGER;
+      const holdBeforeOut = Math.max(0, outStart - inEnd);
+
+      return Animated.sequence([
+        Animated.delay(inStart),
+        Animated.timing(value, {
+          toValue: 1,
+          duration: IN_DUR,
+          easing: bounceIn,
+          useNativeDriver: true,
+        }),
+        Animated.delay(holdBeforeOut),
+        Animated.timing(value, {
+          toValue: 0,
+          duration: OUT_DUR,
+          easing: slideOut,
+          useNativeDriver: true,
+        }),
+      ]);
     });
 
-    // Subtle breathing pulse once loaded
-    const breatheAnim = Animated.loop(
+    const cycle = Animated.loop(
       Animated.sequence([
-        Animated.timing(pulseAnim, {
-          toValue: 1.03,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
-        Animated.timing(pulseAnim, {
-          toValue: 1,
-          duration: 900,
-          easing: Easing.inOut(Easing.quad),
-          useNativeDriver: true,
-        }),
+        Animated.parallel(plateSequences),
+        Animated.delay(LOOP_GAP),
       ])
     );
+    cycle.start();
 
-    Animated.sequence([loadAnim, breatheAnim]).start();
+    return () => cycle.stop();
+  }, [plateAnims]);
 
-    return () => {
-      loadProgress.stopAnimation();
-      pulseAnim.stopAnimation();
-    };
-  }, [loadProgress, pulseAnim]);
+  const translateFor = (value: Animated.Value, side: 'left' | 'right') =>
+    value.interpolate({
+      inputRange: [0, 1],
+      outputRange: side === 'left' ? [-SLIDE_DISTANCE, 0] : [SLIDE_DISTANCE, 0],
+    });
 
-  // Interpolated slide offsets for plates loading onto the barbell sleeves
-  // Inner plates (45s) slide 36px into collar
-  const innerLeftTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-36, 0],
-  });
-  const innerRightTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [36, 0],
-  });
-
-  // Middle plates (35s) slide 44px
-  const midLeftTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-44, 0],
-  });
-  const midRightTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [44, 0],
-  });
-
-  // Outer plates (25s) slide 52px
-  const outerLeftTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-52, 0],
-  });
-  const outerRightTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [52, 0],
-  });
-
-  // Collar clamps slide 58px
-  const collarLeftTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [-58, 0],
-  });
-  const collarRightTranslate = loadProgress.interpolate({
-    inputRange: [0, 1],
-    outputRange: [58, 0],
-  });
-
-  const plateOpacity = loadProgress.interpolate({
-    inputRange: [0, 0.3, 1],
-    outputRange: [0, 1, 1],
-  });
+  const opacityFor = (value: Animated.Value) =>
+    value.interpolate({
+      inputRange: [0, 0.25, 1],
+      outputRange: [0, 1, 1],
+    });
 
   return (
     <View
@@ -122,13 +140,8 @@ export function LoadingScreen({ label }: LoadingScreenProps) {
         </Text>
       </View>
 
-      {/* Barbell with plates loaded */}
-      <Animated.View
-        style={[
-          styles.barbellWrapper,
-          { transform: [{ scale: pulseAnim }] },
-        ]}
-        accessible={false}>
+      {/* Barbell with bumper plates loading */}
+      <View style={styles.barbellWrapper} accessible={false}>
         <View style={styles.barbell}>
           {/* Main Bar Shaft */}
           <View style={styles.shaft} />
@@ -145,99 +158,42 @@ export function LoadingScreen({ label }: LoadingScreenProps) {
           <View style={styles.flangeRight} />
           <View style={styles.sleeveRight} />
 
-          {/* --- LEFT LOADED PLATES --- */}
-          {/* Inner 45 Plate */}
-          <Animated.View
-            style={[
-              styles.plate,
-              styles.plate45,
-              styles.leftPlateInner,
-              { opacity: plateOpacity, transform: [{ translateX: innerLeftTranslate }] },
-            ]}>
-            <View style={styles.plateRib} />
-            <View style={styles.plateHole} />
-          </Animated.View>
+          {/* Plates load on both sleeves, heaviest (inner) first */}
+          {layout.map((plate, i) => (
+            <Fragment key={`${plate.weight}-${i}`}>
+              <Animated.View
+                style={[
+                  styles.plate,
+                  {
+                    width: plate.width,
+                    height: PLATE_HEIGHT,
+                    backgroundColor: plate.color,
+                    left: plate.seat,
+                    opacity: opacityFor(plateAnims[i]),
+                    transform: [{ translateX: translateFor(plateAnims[i], 'left') }],
+                  },
+                ]}>
+                <View style={styles.plateHole} />
+              </Animated.View>
 
-          {/* Middle 35 Plate */}
-          <Animated.View
-            style={[
-              styles.plate,
-              styles.plate35,
-              styles.leftPlateMid,
-              { opacity: plateOpacity, transform: [{ translateX: midLeftTranslate }] },
-            ]}>
-            <View style={styles.plateRib} />
-            <View style={styles.plateHole} />
-          </Animated.View>
-
-          {/* Outer 25 Plate */}
-          <Animated.View
-            style={[
-              styles.plate,
-              styles.plate25,
-              styles.leftPlateOuter,
-              { opacity: plateOpacity, transform: [{ translateX: outerLeftTranslate }] },
-            ]}>
-            <View style={styles.plateRib} />
-            <View style={styles.plateHole} />
-          </Animated.View>
-
-          {/* Left Collar Clip */}
-          <Animated.View
-            style={[
-              styles.collar,
-              styles.leftCollar,
-              { opacity: plateOpacity, transform: [{ translateX: collarLeftTranslate }] },
-            ]}
-          />
-
-          {/* --- RIGHT LOADED PLATES --- */}
-          {/* Inner 45 Plate */}
-          <Animated.View
-            style={[
-              styles.plate,
-              styles.plate45,
-              styles.rightPlateInner,
-              { opacity: plateOpacity, transform: [{ translateX: innerRightTranslate }] },
-            ]}>
-            <View style={styles.plateRib} />
-            <View style={styles.plateHole} />
-          </Animated.View>
-
-          {/* Middle 35 Plate */}
-          <Animated.View
-            style={[
-              styles.plate,
-              styles.plate35,
-              styles.rightPlateMid,
-              { opacity: plateOpacity, transform: [{ translateX: midRightTranslate }] },
-            ]}>
-            <View style={styles.plateRib} />
-            <View style={styles.plateHole} />
-          </Animated.View>
-
-          {/* Outer 25 Plate */}
-          <Animated.View
-            style={[
-              styles.plate,
-              styles.plate25,
-              styles.rightPlateOuter,
-              { opacity: plateOpacity, transform: [{ translateX: outerRightTranslate }] },
-            ]}>
-            <View style={styles.plateRib} />
-            <View style={styles.plateHole} />
-          </Animated.View>
-
-          {/* Right Collar Clip */}
-          <Animated.View
-            style={[
-              styles.collar,
-              styles.rightCollar,
-              { opacity: plateOpacity, transform: [{ translateX: collarRightTranslate }] },
-            ]}
-          />
+              <Animated.View
+                style={[
+                  styles.plate,
+                  {
+                    width: plate.width,
+                    height: PLATE_HEIGHT,
+                    backgroundColor: plate.color,
+                    right: plate.seat,
+                    opacity: opacityFor(plateAnims[i]),
+                    transform: [{ translateX: translateFor(plateAnims[i], 'right') }],
+                  },
+                ]}>
+                <View style={styles.plateHole} />
+              </Animated.View>
+            </Fragment>
+          ))}
         </View>
-      </Animated.View>
+      </View>
 
       {/* Loading Label */}
       <View style={styles.footer}>
@@ -290,7 +246,7 @@ const styles = StyleSheet.create({
     left: 42,
     right: 42,
     height: 6,
-    borderRadius: 3,
+    borderRadius: 2,
     backgroundColor: colors.text,
   },
   knurlLeft: {
@@ -312,7 +268,7 @@ const styles = StyleSheet.create({
     left: 40,
     width: 5,
     height: 24,
-    borderRadius: 2,
+    borderRadius: 1,
     backgroundColor: colors.text,
   },
   flangeRight: {
@@ -320,7 +276,7 @@ const styles = StyleSheet.create({
     right: 40,
     width: 5,
     height: 24,
-    borderRadius: 2,
+    borderRadius: 1,
     backgroundColor: colors.text,
   },
   sleeveLeft: {
@@ -328,7 +284,7 @@ const styles = StyleSheet.create({
     left: 2,
     width: 38,
     height: 9,
-    borderRadius: 2,
+    borderRadius: 1,
     backgroundColor: colors.borderStrong,
   },
   sleeveRight: {
@@ -336,79 +292,20 @@ const styles = StyleSheet.create({
     right: 2,
     width: 38,
     height: 9,
-    borderRadius: 2,
+    borderRadius: 1,
     backgroundColor: colors.borderStrong,
   },
   plate: {
     position: 'absolute',
-    backgroundColor: colors.text,
     alignItems: 'center',
     justifyContent: 'center',
-    borderRadius: 3,
-  },
-  plate45: {
-    width: 9,
-    height: 62,
-    borderRadius: 4,
-  },
-  plate35: {
-    width: 8,
-    height: 52,
-    borderRadius: 3,
-  },
-  plate25: {
-    width: 7,
-    height: 42,
-    borderRadius: 3,
-  },
-  plateRib: {
-    position: 'absolute',
-    width: 3,
-    top: 4,
-    bottom: 4,
-    borderRadius: 1,
-    backgroundColor: '#2C2C2E',
+    borderRadius: 2,
   },
   plateHole: {
     width: 3,
-    height: 9,
-    borderRadius: 1.5,
+    height: 12,
+    borderRadius: 1,
     backgroundColor: colors.background,
-  },
-  /* Left plates positioning against left flange (at x=40) */
-  leftPlateInner: {
-    left: 30,
-  },
-  leftPlateMid: {
-    left: 21,
-  },
-  leftPlateOuter: {
-    left: 13,
-  },
-  leftCollar: {
-    left: 6,
-  },
-  /* Right plates positioning against right flange */
-  rightPlateInner: {
-    right: 30,
-  },
-  rightPlateMid: {
-    right: 21,
-  },
-  rightPlateOuter: {
-    right: 13,
-  },
-  rightCollar: {
-    right: 6,
-  },
-  collar: {
-    position: 'absolute',
-    width: 5,
-    height: 18,
-    borderRadius: 2,
-    backgroundColor: colors.borderStrong,
-    borderWidth: 1,
-    borderColor: colors.text,
   },
   footer: {
     marginTop: spacing.xxxl,

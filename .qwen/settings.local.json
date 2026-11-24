@@ -1,0 +1,11 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(ls -a; echo \"---\"; ls src/app; echo \"---\"; ls src/components | head -50)",
+      "Bash(cd /c/SkachcorpAuth/SkachcorpGymProject/GymPal && grep -rn \"expo-splash-screen\\\\|react-native-reanimated\\\\|lottie\" package.json)",
+      "Bash(cd /c/SkachcorpAuth/SkachcorpGymProject/GymPal && ls __tests__ && grep -rln \"loading-screen\\\\|LoadingScreen\\\\|_layout\" __tests__ jest.setup.js docs 2>/dev/null)",
+      "Bash(npx tsc:*)",
+      "Bash(npx expo:*)"
+    ]
+  }
+}

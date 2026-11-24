@@ -21,7 +21,7 @@ export default function RootLayout() {
     }
     const timer = setTimeout(() => {
       setLaunching(false);
-    }, 1100);
+    }, 3000);
     return () => clearTimeout(timer);
   }, []);
 

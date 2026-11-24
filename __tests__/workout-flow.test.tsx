@@ -170,8 +170,9 @@ describe('workout flow', () => {
     // 8. The summary.
     await waitFor(() => expect(screen.getByTestId('stat-sets')).toBeTruthy());
     expect(screen.getByText('Bench Press')).toBeTruthy();
-    // The corrected weight is what was saved.
-    expect(screen.getByText('62.5 kg × 8')).toBeTruthy();
+    // The corrected weight and reps are saved and shown in the inline fields.
+    expect(screen.getByTestId(/session-set-\d+-weight/).props.value).toBe('62.5');
+    expect(screen.getByTestId(/session-set-\d+-reps/).props.value).toBe('8');
 
     // 9. The session is in the history.
     await testRouter.navigate('/history');

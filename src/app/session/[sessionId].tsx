@@ -243,7 +243,7 @@ export default function ActiveSessionScreen() {
   const inputKey = subject
     ? `${subject.exercise.exerciseId}:${subject.setNumber}`
     : 'none';
-  const [input, setInput] = useState<{ key: string; weight: string; reps: string; rpe: string } | null>(
+  const [input, setInput] = useState<{ key: string; weight: string; reps: string } | null>(
     null
   );
   const isCurrentInput = input?.key === inputKey;
@@ -257,14 +257,11 @@ export default function ActiveSessionScreen() {
     : suggestedReps !== null
       ? String(suggestedReps)
       : '';
-  const rpeValue = isCurrentInput ? input.rpe : subjectSet?.rpe == null ? '' : String(subjectSet.rpe);
-
   const handleWeightChange = (value: string) => {
     setInput({
       key: inputKey,
       weight: value,
       reps: isCurrentInput ? input.reps : repsValue,
-      rpe: isCurrentInput ? input.rpe : rpeValue,
     });
   };
 
@@ -273,16 +270,6 @@ export default function ActiveSessionScreen() {
       key: inputKey,
       weight: isCurrentInput ? input.weight : weightValue,
       reps: value,
-      rpe: isCurrentInput ? input.rpe : rpeValue,
-    });
-  };
-
-  const handleRpeChange = (value: string) => {
-    setInput({
-      key: inputKey,
-      weight: isCurrentInput ? input.weight : weightValue,
-      reps: isCurrentInput ? input.reps : repsValue,
-      rpe: value,
     });
   };
 
@@ -296,7 +283,6 @@ export default function ActiveSessionScreen() {
       const enteredWeight = weightValue.trim() === '' ? null : Number(weightValue.replace(',', '.'));
       const weightKg = enteredWeight === null ? null : system === 'imperial' ? lbToKg(enteredWeight) : enteredWeight;
       const repsNumber = repsValue.trim() === '' ? null : Number.parseInt(repsValue, 10);
-      const rpeNumber = rpeValue.trim() === '' ? null : Number(rpeValue.replace(',', '.'));
       if (subject?.setKind === 'amrap' && repsNumber === null) {
         setInputError('Enter the reps you completed for this AMRAP set.');
         return;
@@ -304,13 +290,13 @@ export default function ActiveSessionScreen() {
       await advancePhase(database, session.id, phases, phaseIndex, {
         weightKg,
         reps: repsNumber,
-        rpe: rpeNumber,
+        rpe: null,
       });
       reload();
     } finally {
       setSaving(false);
     }
-  }, [database, phaseIndex, phases, reload, repsValue, rpeValue, session, subject?.setKind, system, weightValue]);
+  }, [database, phaseIndex, phases, reload, repsValue, session, subject?.setKind, system, weightValue]);
 
   const handleBack = useCallback(async () => {
     if (!session || phaseIndex === 0) {
@@ -387,11 +373,10 @@ export default function ActiveSessionScreen() {
     const enteredWeight = weightValue.trim() === '' ? null : Number(weightValue.replace(',', '.'));
     const weightKg = enteredWeight === null ? null : system === 'imperial' ? lbToKg(enteredWeight) : enteredWeight;
     const repsNumber = repsValue.trim() === '' ? null : Number.parseInt(repsValue, 10);
-    const rpeNumber = rpeValue.trim() === '' ? null : Number(rpeValue.replace(',', '.'));
     setSaving(true);
     try {
       await logSetAt(database, session.id, phase.exercise.exerciseId, phase.setNumber, {
-        weightKg, reps: repsNumber, rpe: rpeNumber,
+        weightKg, reps: repsNumber, rpe: null,
       }, phase);
       for (const skipped of remainingDrops) {
         await database.logSet({
@@ -427,7 +412,7 @@ export default function ActiveSessionScreen() {
     } finally {
       setSaving(false);
     }
-  }, [database, phase, phaseIndex, phases, reload, repsValue, rpeValue, session, system, weightValue]);
+  }, [database, phase, phaseIndex, phases, reload, repsValue, session, system, weightValue]);
 
   const swipe = useSwipeNavigation({
     onNext: () => {
@@ -659,9 +644,7 @@ export default function ActiveSessionScreen() {
             phase.prescribedWeightKg === null ? null : `${formatSessionWeight(phase.prescribedWeightKg, system)} planned`,
             phase.prescribedReps === null ? null : `${phase.prescribedReps} reps planned`,
           ].filter(Boolean).join(' · ') || 'Enter the load and reps you choose'
-        : phase.repRangeMin === null
-          ? null
-          : `Target ${phase.repRangeMin}${phase.repRangeMax === phase.repRangeMin ? '' : `–${phase.repRangeMax}`} reps`;
+        : null;
   const nextWorkPhase = phase?.kind === 'work'
     ? phases.slice(phaseIndex + 1).find(
         (candidate): candidate is WorkoutWorkPhase => candidate.kind === 'work'
@@ -852,16 +835,6 @@ export default function ActiveSessionScreen() {
               style={styles.input}
               testID="set-reps"
             />
-            <Field
-              label="RPE (optional)"
-              value={rpeValue}
-              onChangeText={handleRpeChange}
-              keyboardType="decimal-pad"
-              placeholder="1–10"
-              inverted={isRest}
-              style={styles.input}
-              testID="set-rpe"
-            />
           </View> : null}
 
           {phase?.kind === 'work' && phase.setKind === 'amrap' && phase.repRangeMin !== null ? (
@@ -899,18 +872,6 @@ export default function ActiveSessionScreen() {
             />
           ) : null}
 
-          <View style={styles.hint}>
-            <Text
-              variant="caption"
-              color={isRest ? 'rgba(255, 255, 255, 0.45)' : colors.textTertiary}>
-              Use Back to return
-            </Text>
-            <Text
-              variant="caption"
-              color={isRest ? 'rgba(255, 255, 255, 0.45)' : colors.textTertiary}>
-              Use Log set to continue
-            </Text>
-          </View>
         </ScrollView>
       </KeyboardAvoidingView>
 
@@ -927,6 +888,7 @@ export default function ActiveSessionScreen() {
                 label="Keep training"
                 variant="secondary"
                 size="md"
+                inverted={isRest}
                 onPress={() => setConfirmingFinish(false)}
                 style={styles.confirmButton}
                 testID="cancel-finish"
@@ -934,6 +896,7 @@ export default function ActiveSessionScreen() {
               <Button
                 label="Finish"
                 size="md"
+                inverted={isRest}
                 onPress={handleFinish}
                 loading={saving}
                 style={styles.confirmButton}
@@ -942,34 +905,14 @@ export default function ActiveSessionScreen() {
             </View>
           </View>
         ) : (
-          <>
-            <View style={styles.phaseActions}>
-              <Button
-                label="Back"
-                variant="secondary"
-                size="md"
-                disabled={phaseIndex === 0 || saving}
-                onPress={() => void handleBack()}
-                style={styles.phaseAction}
-                testID="phase-back"
-              />
-              <Button
-                label={isRest ? 'End rest and continue' : 'Log set and continue'}
-                size="md"
-                disabled={!phase || saving}
-                loading={saving}
-                onPress={() => void handleNext()}
-                style={styles.phaseAction}
-                testID="phase-next"
-              />
-            </View>
-            <Button
-              label="Finish Workout"
-              variant="ghost"
-              onPress={() => setConfirmingFinish(true)}
-              testID="finish-workout"
-            />
-          </>
+          <Button
+            label="Finish Workout"
+            variant="secondary"
+            size="md"
+            inverted={isRest}
+            onPress={() => setConfirmingFinish(true)}
+            testID="finish-workout"
+          />
         )}
       </View>
 
@@ -1273,26 +1216,11 @@ const styles = StyleSheet.create({
   input: {
     flex: 1,
   },
-  hint: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    marginTop: spacing.lg,
-    paddingHorizontal: spacing.xs,
-  },
   footer: {
     paddingHorizontal: spacing.lg,
     paddingTop: spacing.md,
     paddingBottom: spacing.lg,
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: colors.border,
     gap: spacing.sm,
-  },
-  phaseActions: {
-    flexDirection: 'row',
-    gap: spacing.sm,
-  },
-  phaseAction: {
-    flex: 1,
   },
   confirm: {
     gap: spacing.md,
