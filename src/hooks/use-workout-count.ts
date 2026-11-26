@@ -3,18 +3,22 @@ import { useCallback, useState } from 'react';
 import { useDatabase } from '@/db/database-provider';
 import { useAsyncData } from '@/hooks/use-async-data';
 
-export type WorkoutCountPeriod = 'week' | 'month' | 'year';
+export type WorkoutCountPeriod = 'week' | 'month' | 'year' | 'lifetime';
 
 const PERIOD_LABELS: Record<WorkoutCountPeriod, string> = {
   week: 'this week',
   month: 'this month',
   year: 'this year',
+  lifetime: 'lifetime',
 };
 
-const PERIOD_ORDER: WorkoutCountPeriod[] = ['week', 'month', 'year'];
+const PERIOD_ORDER: WorkoutCountPeriod[] = ['week', 'month', 'year', 'lifetime'];
 
 /** Midnight at the start of the period that contains `now`. */
 export function startOfPeriod(period: WorkoutCountPeriod, now: number): number {
+  if (period === 'lifetime') {
+    return 0;
+  }
   const date = new Date(now);
   if (period === 'week') {
     const mondayOffset = (date.getDay() + 6) % 7;
@@ -34,9 +38,9 @@ export function startOfPeriod(period: WorkoutCountPeriod, now: number): number {
 
 /**
  * Counts completed workouts for the selected period. Tapping cycles the
- * period through week -> month -> year.
+ * period through week -> month -> year -> lifetime.
  */
-export function useWorkoutCount(initialPeriod: WorkoutCountPeriod = 'month') {
+export function useWorkoutCount(initialPeriod: WorkoutCountPeriod = 'week') {
   const [period, setPeriod] = useState<WorkoutCountPeriod>(initialPeriod);
   const [now] = useState(() => Date.now());
   const database = useDatabase();

@@ -46,7 +46,14 @@ export default function RootLayout() {
           <Stack.Screen name="workouts/index" />
           <Stack.Screen name="workouts/[workoutId]" />
           <Stack.Screen name="progress/[metricKey]" />
-          <Stack.Screen name="session/[sessionId]" />
+          {/*
+            The session owns horizontal swipes: they move between rest and
+            activity. The platform back gesture would steal them, so it is off.
+          */}
+          <Stack.Screen
+            name="session/[sessionId]"
+            options={{ gestureEnabled: false, fullScreenGestureEnabled: false }}
+          />
           <Stack.Screen name="sessions/[sessionId]" />
           <Stack.Screen name="privacy" />
         </Stack>

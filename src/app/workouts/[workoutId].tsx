@@ -7,6 +7,7 @@ import { Button } from '@/components/button';
 import { Card, Divider } from '@/components/card';
 
 import { LoadingScreen } from '@/components/loading-screen';
+import { MuscleChips, MuscleDiagram } from '@/components/muscle-diagram';
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
 import { EmptyState } from '@/components/states';
@@ -18,6 +19,7 @@ import type { WorkoutSession } from '@/db/repositories/sessions';
 import { useAsyncData } from '@/hooks/use-async-data';
 import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useProfile } from '@/state/profile-context';
+import { muscleSummary, musclesForWorkout } from '@/workouts/muscles';
 import { formatRestDuration, formatSessionDate } from '@/workouts/timer';
 
 /**
@@ -104,6 +106,7 @@ export default function WorkoutOverviewScreen() {
 
   const totalSets = workout.exercises.reduce((sum, exercise) => sum + exercise.targetSets, 0);
   const exerciseCount = workout.exercises.length;
+  const muscles = musclesForWorkout(workout.exercises);
 
   return (
     <Screen
@@ -150,6 +153,14 @@ export default function WorkoutOverviewScreen() {
         </View>
       ) : null}
 
+      {muscles.length > 0 ? (
+        <Card style={styles.muscleCard}>
+          <Text variant="eyebrow">Muscles worked</Text>
+          <MuscleDiagram muscles={muscles} />
+          <MuscleChips muscles={muscles} />
+        </Card>
+      ) : null}
+
       <View style={styles.exercises}>
         {workout.exercises.length === 0 ? (
           <EmptyState
@@ -167,6 +178,9 @@ export default function WorkoutOverviewScreen() {
                   <Text variant="bodyStrong">{exercise.name}</Text>
                   <Text variant="caption">
                     {exercise.muscleGroup} · {exercise.equipment}
+                  </Text>
+                  <Text variant="caption" tone="textTertiary">
+                    {muscleSummary(exercise)}
                   </Text>
                 </View>
               </View>
@@ -207,6 +221,10 @@ const styles = StyleSheet.create({
     borderWidth: StyleSheet.hairlineWidth,
     borderColor: colors.text,
     gap: spacing.sm,
+  },
+  muscleCard: {
+    marginTop: spacing.xl,
+    gap: spacing.md,
   },
   exercises: {
     marginTop: spacing.xl,

@@ -104,7 +104,7 @@ export default function ProgressDetailScreen() {
     [timeframe, animate]
   );
 
-  const swipe = useSwipeNavigation({
+  const { gestureHandlers: swipe } = useSwipeNavigation({
     onNext: () => goTimeframe(1),
     onBack: () => goTimeframe(-1),
   });

@@ -54,11 +54,24 @@ describe('starting a workout', () => {
 
     expect(screen.getByText('GymPal')).toBeTruthy();
     expect(screen.getByText('Hello, Alex Carter')).toBeTruthy();
-    expect(screen.getByText('Height')).toBeTruthy();
-    expect(screen.getByText('180 cm')).toBeTruthy();
-    expect(screen.getByText('Weight')).toBeTruthy();
-    expect(screen.getByText('80 kg')).toBeTruthy();
+    expect(screen.getByTestId('home-lift-count')).toBeTruthy();
+    expect(screen.getByText(/lifts this week/)).toBeTruthy();
     expect(screen.getByTestId('home-start-workout')).toBeTruthy();
+
+    // Tapping the count walks through month, year and lifetime.
+    await press('home-lift-count');
+    expect(screen.getByText(/lifts this month/)).toBeTruthy();
+    await press('home-lift-count');
+    expect(screen.getByText(/lifts this year/)).toBeTruthy();
+    await press('home-lift-count');
+    expect(screen.getByText(/lifts lifetime/)).toBeTruthy();
+    await press('home-lift-count');
+    expect(screen.getByText(/lifts this week/)).toBeTruthy();
+
+    // Measurements and the old highlight cards are no longer on home.
+    expect(screen.queryByText('Height')).toBeNull();
+    expect(screen.queryByText('Weight')).toBeNull();
+    expect(screen.queryByText('Personal record')).toBeNull();
 
     // The old home furniture is gone.
     expect(screen.queryByText('Create a plan')).toBeNull();

@@ -1,24 +1,29 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import {
   Animated,
   Easing,
-  KeyboardAvoidingView,
   Platform,
   Pressable,
-  ScrollView,
   StyleSheet,
+  useWindowDimensions,
   View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { Redirect, useLocalSearchParams, useRouter } from 'expo-router';
 
-import { Button } from '@/components/button';
 import { Chevron } from '@/components/chevron';
 import { ExercisePicker } from '@/components/exercise-picker';
-import { Field } from '@/components/text-input';
 import { LoadingScreen } from '@/components/loading-screen';
+import { NewExerciseGlow } from '@/components/new-exercise-glow';
+import { SessionPhasePage } from '@/components/session-phase-page';
 import { Text } from '@/components/text';
-import { TimerRing } from '@/components/timer-ring';
 import { WorkoutEditSheet } from '@/components/workout-edit-sheet';
 import { colors, radius, spacing } from '@/constants/theme';
 import { useDatabase } from '@/db/database-provider';
@@ -38,32 +43,37 @@ import {
   finishSession,
   goBackPhase,
   logSetAt,
-  sessionClocks,
-  type WorkoutPhase,
   type WorkoutWorkPhase,
   swapSessionExercise,
   setSessionPhaseIndex,
   swapSessionExercisePositions,
 } from '@/workouts/session-runner';
-import { formatDuration, formatRestCountdown } from '@/workouts/timer';
-import { kgToLb, lbToKg } from '@/lib/units';
-import { normalizeSetConfiguration } from '@/workouts/set-types';
+import { buildSessionPhaseView } from '@/workouts/session-view';
+import { lbToKg } from '@/lib/units';
+
+const noop = () => {};
 
 /**
  * The active workout.
  *
  * The screen is a timeline of phases. Swiping left moves on — logging the set
- * and starting the rest — and swiping right goes back. The clock is in the
- * middle, and the whole screen inverts while the user rests.
+ * and starting the rest — and swiping right goes back. The neighbouring phase
+ * is drawn beside the current one, so the screen slides directly from one phase
+ * to the next instead of leaving a blank gap that fills in after loading. The
+ * platform back gesture is disabled on this route so the swipe belongs to the
+ * workout.
  *
- * While a set is in focus the exercise name opens the exercise library so the
- * user can swap movements, the + / − beside the clock add and remove sets, and
- * the "Edit Workout" button opens the full workout list with drag to reorder.
+ * The clock is in the middle, and the whole screen inverts while the user
+ * rests. While a set is in focus the exercise name opens the exercise library
+ * so the user can swap movements, the + / − beside the clock add and remove
+ * sets, and the options button opens the full workout list with drag to
+ * reorder.
  */
 export default function ActiveSessionScreen() {
   const router = useRouter();
   const database = useDatabase();
   const insets = useSafeAreaInsets();
+  const { width } = useWindowDimensions();
   const { status, profile } = useProfile();
   const { sessionId } = useLocalSearchParams<{ sessionId: string }>();
 
@@ -75,6 +85,8 @@ export default function ActiveSessionScreen() {
   const [menuProgress] = useState(() => new Animated.Value(0));
   const [workoutEditorOpen, setWorkoutEditorOpen] = useState(false);
   const [pickerOpen, setPickerOpen] = useState(false);
+  const [peekDirection, setPeekDirection] = useState<'next' | 'back' | null>(null);
+  const [input, setInput] = useState<{ key: string; weight: string; reps: string } | null>(null);
 
   useEffect(() => {
     Animated.timing(menuProgress, {
@@ -114,10 +126,83 @@ export default function ActiveSessionScreen() {
 
   const phases = useMemo(() => buildPhases(exercises), [exercises]);
   const phaseIndex = Math.max(0, session?.phaseIndex ?? 0);
-  const phase: WorkoutPhase | null = phases[phaseIndex] ?? null;
+  const currentExercise = phases[phaseIndex]?.exercise ?? null;
+  const system: 'metric' | 'imperial' = profile?.system ?? 'metric';
 
-  const isRest = phase?.kind === 'rest';
-  const currentExercise = phase?.exercise ?? null;
+  // Previous performance for the exercise in focus.
+  const previousLoader = useCallback(async () => {
+    if (!currentExercise) {
+      return null;
+    }
+    return database.getPreviousPerformance(currentExercise.exerciseId, {
+      excludeSessionId: Number(sessionId),
+    });
+  }, [currentExercise, database, sessionId]);
+  const { data: previous } = useAsyncData<PreviousPerformance | null>(previousLoader);
+
+  // The phase being dragged in. Its own performance is loaded as soon as the
+  // drag starts, so the previewed page opens with the right numbers.
+  // Clamped to the timeline: a swipe past either end brings in the page that is
+  // already on screen, so the strip still shows content instead of a blank.
+  const peekPhaseIndex = peekDirection === 'next'
+    ? Math.min(phases.length, phaseIndex + 1)
+    : peekDirection === 'back'
+      ? Math.max(0, phaseIndex - 1)
+      : null;
+  const showPeek = peekDirection !== null;
+  const peekExercise = showPeek && peekPhaseIndex !== null
+    ? phases[peekPhaseIndex]?.exercise ?? null
+    : null;
+
+  const peekPreviousLoader = useCallback(async () => {
+    if (!peekExercise) {
+      return null;
+    }
+    return database.getPreviousPerformance(peekExercise.exerciseId, {
+      excludeSessionId: Number(sessionId),
+    });
+  }, [database, peekExercise, sessionId]);
+  const { data: peekPrevious } = useAsyncData<PreviousPerformance | null>(peekPreviousLoader);
+
+  const view = useMemo(
+    () => buildSessionPhaseView({
+      phases,
+      phaseIndex,
+      exercises,
+      sets,
+      session,
+      now,
+      system,
+      previous,
+      input,
+    }),
+    [exercises, input, now, phaseIndex, phases, previous, session, sets, system]
+  );
+
+  const peekView = useMemo(
+    () => (showPeek && peekPhaseIndex !== null
+      ? buildSessionPhaseView({
+          phases,
+          phaseIndex: peekPhaseIndex,
+          exercises,
+          sets,
+          session,
+          now,
+          system,
+          previous: peekPrevious,
+          input: null,
+          preview: true,
+        })
+      : null),
+    [exercises, now, peekPhaseIndex, peekPrevious, phases, session, sets, showPeek, system]
+  );
+
+  // The rest is not cut short: once it is over the countdown goes negative and
+  // blinks until the user moves on.
+  const blink = useBlink(view.restOverdue);
+
+  const phase = view.phase;
+
   const setsForCurrent = useMemo(
     () =>
       currentExercise
@@ -125,49 +210,6 @@ export default function ActiveSessionScreen() {
         : [],
     [currentExercise, sets]
   );
-
-  /**
-   * The set the fields belong to.
-   *
-   * While working it is the set being done; while resting it is the set that
-   * was just finished, so the user can still correct it.
-   */
-  const subject = useMemo<WorkoutWorkPhase | null>(() => {
-    if (!phase) {
-      return null;
-    }
-    if (phase.kind === 'work') return phase;
-    const correctable = sets
-      .filter((set) =>
-        set.isCompleted && set.exerciseId === phase.exercise.exerciseId &&
-        set.plannedSetNumber === phase.afterPhase.plannedSetNumber &&
-        set.setNumber <= phase.afterSet
-      )
-      .sort((a, b) => b.setNumber - a.setNumber)[0];
-    if (!correctable) return phase.afterPhase;
-    return phases
-      .slice(0, phaseIndex)
-      .find((candidate): candidate is WorkoutWorkPhase => candidate.kind === 'work' && candidate.setNumber === correctable.setNumber) ?? phase.afterPhase;
-  }, [phase, phaseIndex, phases, sets]);
-
-  const clocks = useMemo(
-    () => sessionClocks(session, now, currentExercise, setsForCurrent.length),
-    [currentExercise, now, session, setsForCurrent.length]
-  );
-
-  // The fill of the work ring counts the sets completed before the one in
-  // progress, so adding or removing sets never moves the clock.
-  const setProgress = useMemo(() => {
-    if (!phase || phase.kind !== 'work') {
-      return 0;
-    }
-    const setsBeforeCurrent = phase.setNumber - 1;
-    const loggedBefore = setsForCurrent.filter((set) => set.setNumber < phase.setNumber).length;
-    const done = Math.min(setsBeforeCurrent, loggedBefore);
-    const total = Math.max(1, phase.setNumber);
-    const progress = total > 0 ? done / total : 0;
-    return progress > 1 ? 1 : progress;
-  }, [phase, setsForCurrent]);
 
   // The phase, the timer and the workout, on the Lock Screen and in the Dynamic
   // Island as well. The activity ticks its own timer; this only pushes new props
@@ -185,127 +227,57 @@ export default function ActiveSessionScreen() {
     exerciseElapsedSeconds: session?.exerciseElapsedSeconds ?? 0,
   });
 
-  // The rest is not cut short: once it is over the countdown goes negative and
-  // blinks until the user moves on.
-  const restOverdue = isRest && clocks.restOverdue;
-  const blink = useBlink(restOverdue);
-
-  // Previous performance for the exercise in focus.
-  const previousLoader = useCallback(async () => {
-    if (!currentExercise) {
-      return null;
-    }
-    return database.getPreviousPerformance(currentExercise.exerciseId, {
-      excludeSessionId: Number(sessionId),
-    });
-  }, [currentExercise, database, sessionId]);
-  const { data: previous } = useAsyncData<PreviousPerformance | null>(previousLoader);
-
-  // The inputs are prefilled, so a set can be logged without typing anything.
-  const subjectSet = useMemo(
-    () =>
-      subject
-        ? sets.find(
-            (set) =>
-              set.exerciseId === subject.exercise.exerciseId &&
-              set.setNumber === subject.setNumber && set.isCompleted
-          )
-        : undefined,
-    [sets, subject]
-  );
-  const lastSet = setsForCurrent[setsForCurrent.length - 1];
-  const lastPerformance = previous?.sets[previous.sets.length - 1];
-  const targetReps = subject?.exercise.repRangeMin ?? 0;
-
-  const isOptionalLoadPhase = subject?.setKind === 'warmup' || subject?.setKind === 'drop';
-  const suggestedWeightKg = subjectSet?.weightKg ?? (
-    isOptionalLoadPhase
-      ? subject?.prescribedWeightKg ?? null
-      : lastSet?.weightKg ?? lastPerformance?.weightKg ?? null
-  );
-  const suggestedReps = subjectSet?.reps ?? (
-    subject?.setKind === 'warmup' || subject?.setKind === 'drop'
-      ? subject.prescribedReps
-      : subject?.setKind === 'amrap'
-        ? null
-        : lastSet?.reps ?? lastPerformance?.reps ?? (targetReps > 0 ? targetReps : null)
-  );
-  const system = profile?.system ?? 'metric';
-  const weightUnit = system === 'imperial' ? 'lb' : 'kg';
-  const suggestedWeight = suggestedWeightKg === null
-    ? null
-    : system === 'imperial'
-      ? Number(kgToLb(suggestedWeightKg).toFixed(1))
-      : suggestedWeightKg;
-
-  // The key follows the set, not the phase, so the values carry over from the
-  // set into the rest.
-  const inputKey = subject
-    ? `${subject.exercise.exerciseId}:${subject.setNumber}`
-    : 'none';
-  const [input, setInput] = useState<{ key: string; weight: string; reps: string } | null>(
-    null
-  );
-  const isCurrentInput = input?.key === inputKey;
-  const weightValue = isCurrentInput
-    ? input.weight
-    : suggestedWeight !== null
-      ? String(suggestedWeight)
-      : '';
-  const repsValue = isCurrentInput
-    ? input.reps
-    : suggestedReps !== null
-      ? String(suggestedReps)
-      : '';
-  const handleWeightChange = (value: string) => {
-    setInput({
-      key: inputKey,
-      weight: value,
-      reps: isCurrentInput ? input.reps : repsValue,
-    });
+  // The values shown in the fields are already the user's; typing only has to
+  // remember the other field for the same set.
+  const handleWeightChange = (weight: string) => {
+    setInput({ key: view.inputKey, weight, reps: view.repsValue });
   };
 
-  const handleRepsChange = (value: string) => {
-    setInput({
-      key: inputKey,
-      weight: isCurrentInput ? input.weight : weightValue,
-      reps: value,
-    });
+  const handleRepsChange = (reps: string) => {
+    setInput({ key: view.inputKey, weight: view.weightValue, reps });
   };
 
-  const handleNext = useCallback(async () => {
-    if (!session) {
-      return;
+  /**
+   * Leaves the current phase.
+   *
+   * Returns whether the timeline actually moved, so the swipe can slide back if
+   * the set was rejected.
+   */
+  const handleNext = useCallback(async (): Promise<boolean> => {
+    if (!session || phaseIndex >= phases.length) {
+      return false;
     }
     setSaving(true);
-      setInputError(null);
+    setInputError(null);
     try {
-      const enteredWeight = weightValue.trim() === '' ? null : Number(weightValue.replace(',', '.'));
+      const enteredWeight = view.weightValue.trim() === '' ? null : Number(view.weightValue.replace(',', '.'));
       const weightKg = enteredWeight === null ? null : system === 'imperial' ? lbToKg(enteredWeight) : enteredWeight;
-      const repsNumber = repsValue.trim() === '' ? null : Number.parseInt(repsValue, 10);
-      if (subject?.setKind === 'amrap' && repsNumber === null) {
+      const repsNumber = view.repsValue.trim() === '' ? null : Number.parseInt(view.repsValue, 10);
+      if (view.subjectSetKind === 'amrap' && repsNumber === null) {
         setInputError('Enter the reps you completed for this AMRAP set.');
-        return;
+        return false;
       }
-      await advancePhase(database, session.id, phases, phaseIndex, {
+      const nextIndex = await advancePhase(database, session.id, phases, phaseIndex, {
         weightKg,
         reps: repsNumber,
         rpe: null,
       });
       reload();
+      return nextIndex !== phaseIndex;
     } finally {
       setSaving(false);
     }
-  }, [database, phaseIndex, phases, reload, repsValue, session, subject?.setKind, system, weightValue]);
+  }, [database, phaseIndex, phases, reload, session, system, view.repsValue, view.subjectSetKind, view.weightValue]);
 
-  const handleBack = useCallback(async () => {
+  const handleBack = useCallback(async (): Promise<boolean> => {
     if (!session || phaseIndex === 0) {
-      return;
+      return false;
     }
     setSaving(true);
     try {
       await goBackPhase(database, session.id, phases, phaseIndex);
       reload();
+      return true;
     } finally {
       setSaving(false);
     }
@@ -355,7 +327,12 @@ export default function ActiveSessionScreen() {
       });
       await database.setCurrentExercise(session.id, nextWork.exercise.exerciseId);
     } else {
-      await database.setSessionPhaseIndex(session.id, nextIndex);
+      await switchSessionPhase(database.raw, session.id, {
+        kind: 'work',
+        restSeconds: 0,
+        phaseIndex: nextIndex,
+        stop: true,
+      });
     }
     reload();
   }, [database, phase, phaseIndex, phases, reload, session]);
@@ -370,9 +347,9 @@ export default function ActiveSessionScreen() {
       );
     if (remainingDrops.length === 0) return;
 
-    const enteredWeight = weightValue.trim() === '' ? null : Number(weightValue.replace(',', '.'));
+    const enteredWeight = view.weightValue.trim() === '' ? null : Number(view.weightValue.replace(',', '.'));
     const weightKg = enteredWeight === null ? null : system === 'imperial' ? lbToKg(enteredWeight) : enteredWeight;
-    const repsNumber = repsValue.trim() === '' ? null : Number.parseInt(repsValue, 10);
+    const repsNumber = view.repsValue.trim() === '' ? null : Number.parseInt(view.repsValue, 10);
     setSaving(true);
     try {
       await logSetAt(database, session.id, phase.exercise.exerciseId, phase.setNumber, {
@@ -404,7 +381,12 @@ export default function ActiveSessionScreen() {
           exerciseId: next.exercise.exerciseId,
         });
       } else {
-        await database.setSessionPhaseIndex(session.id, phases.length);
+        await switchSessionPhase(database.raw, session.id, {
+          kind: 'work',
+          restSeconds: 0,
+          phaseIndex: phases.length,
+          stop: true,
+        });
       }
       reload();
     } catch {
@@ -412,17 +394,38 @@ export default function ActiveSessionScreen() {
     } finally {
       setSaving(false);
     }
-  }, [database, phase, phaseIndex, phases, reload, repsValue, session, system, weightValue]);
+  }, [database, phase, phaseIndex, phases, reload, session, system, view.repsValue, view.weightValue]);
 
-  const swipe = useSwipeNavigation({
-    onNext: () => {
-      void handleNext();
-    },
-    onBack: () => {
-      void handleBack();
-    },
+  // The swipe is the way through the workout: left starts the rest, right goes
+  // back to the work. The adjacent phase is drawn beside the current one while
+  // the finger moves, so the slide always shows real content.
+  const {
+    gestureHandlers,
+    translateX: swipeTranslateX,
+    finishSwipe,
+  } = useSwipeNavigation({
+    onNext: handleNext,
+    onBack: handleBack,
     enabled: !confirmingFinish && !workoutEditorOpen && !pickerOpen && !menuOpen,
+    canNext: phaseIndex < phases.length,
+    animated: true,
+    onPeek: setPeekDirection,
   });
+
+  // A completed swipe leaves the arriving page on screen. Once the timeline has
+  // actually moved it is the real page, so the strip is put back at rest and the
+  // preview is dropped: because both show the same phase, nothing appears to
+  // move.
+  const lastPhaseIndex = useRef(phaseIndex);
+  useLayoutEffect(() => {
+    if (lastPhaseIndex.current === phaseIndex) {
+      return;
+    }
+    lastPhaseIndex.current = phaseIndex;
+    swipeTranslateX.setValue(0);
+    setPeekDirection(null);
+    finishSwipe();
+  }, [finishSwipe, phaseIndex, swipeTranslateX]);
 
   const handleFinish = async () => {
     if (!session) {
@@ -480,7 +483,7 @@ export default function ActiveSessionScreen() {
     if (!phaseStillValid) {
       let fallbackIndex = -1;
       for (let i = updatedPhases.length - 1; i >= 0; i -= 1) {
-        const candidate: WorkoutPhase | undefined = updatedPhases[i];
+        const candidate = updatedPhases[i];
         if (
           candidate &&
           candidate.kind === 'work' &&
@@ -503,14 +506,14 @@ export default function ActiveSessionScreen() {
       }
       const position = phase.exercise.position;
       await swapSessionExercise(database.raw, session.id, position, exercise.id);
-      const now = Date.now();
+      const swappedAt = Date.now();
       await database.raw.runAsync(
         `UPDATE workout_sessions
             SET current_exercise_id = ?, exercise_elapsed_seconds = 0, exercise_started_at = ?, updated_at = ?
           WHERE id = ?`,
         exercise.id,
-        now,
-        now,
+        swappedAt,
+        swappedAt,
         session.id
       );
       reload();
@@ -592,6 +595,8 @@ export default function ActiveSessionScreen() {
     [database, exercises, phaseIndex, phases, reload, session]
   );
 
+  const [stillBlink] = useState(() => new Animated.Value(1));
+
   if (status === 'loading') {
     return <LoadingScreen label="Loading your profile" />;
   }
@@ -604,317 +609,88 @@ export default function ActiveSessionScreen() {
     return <LoadingScreen label="Opening the workout" />;
   }
 
-  const supersetRoundCount = phase?.kind === 'work' && phase.exercise.supersetGroup
-    ? Math.min(...exercises.filter((item) => item.supersetGroup === phase.exercise.supersetGroup).map((item) => item.targetSets))
-    : 0;
-  const phaseConfig = phase?.kind === 'work'
-    ? normalizeSetConfiguration(phase.exercise.setConfig, phase.exercise.targetSets)
-    : null;
-  const dropCount = phase?.kind === 'work' && phase.plannedSetNumber !== null
-    ? (phaseConfig?.workSets[phase.plannedSetNumber - 1]?.dropSteps.length ?? 0)
-    : 0;
-  const hasRemainingDropSteps = phase?.kind === 'work' && phase.setKind === 'drop' &&
-    phases.slice(phaseIndex + 1).some((candidate) =>
-      candidate.kind === 'work' && candidate.exercise.id === phase.exercise.id &&
-      candidate.plannedSetNumber === phase.plannedSetNumber && candidate.setKind === 'drop'
-    );
-  const setLabel = !phase
-    ? phases.length > 0 ? 'All sets complete' : 'No exercises yet'
-    : phase.kind !== 'work'
-      ? ''
-      : phase.setKind === 'warmup'
-      ? `Warm-up ${phase.segmentNumber} of ${phaseConfig?.warmups.length ?? phase.segmentNumber}`
-      : phase.setKind === 'drop'
-        ? phase.segmentNumber === 1
-          ? `Drop set · Main effort · Set ${phase.plannedSetNumber}`
-          : `Drop ${phase.segmentNumber - 1} of ${dropCount} · Set ${phase.plannedSetNumber}`
-        : phase.setKind === 'amrap'
-          ? `AMRAP · Set ${phase.plannedSetNumber} of ${phase.exercise.targetSets}`
-          : phase.supersetRound !== null
-            ? `Superset ${getSupersetLetter(exercises, phase.exercise.supersetGroup)} · Round ${phase.supersetRound} of ${supersetRoundCount} · Set ${phase.plannedSetNumber}`
-            : `Set ${phase.plannedSetNumber} of ${phase.exercise.targetSets}`;
-  const phaseInstruction = phase?.kind !== 'work'
-    ? null
-    : phase.setKind === 'amrap'
-      ? phase.repRangeMin === null
-        ? 'As many reps as you choose'
-        : `As many reps as you choose · minimum guidance ${phase.repRangeMin}`
-      : phase.setKind === 'warmup' || phase.segmentNumber > 1
-        ? [
-            phase.prescribedWeightKg === null ? null : `${formatSessionWeight(phase.prescribedWeightKg, system)} planned`,
-            phase.prescribedReps === null ? null : `${phase.prescribedReps} reps planned`,
-          ].filter(Boolean).join(' · ') || 'Enter the load and reps you choose'
-        : null;
-  const nextWorkPhase = phase?.kind === 'work'
-    ? phases.slice(phaseIndex + 1).find(
-        (candidate): candidate is WorkoutWorkPhase => candidate.kind === 'work'
-      )
-    : undefined;
-  const nextSupersetExercise = phase?.kind === 'work' && phase.supersetRound !== null
-    ? phases.slice(phaseIndex + 1).find(
-        (candidate): candidate is WorkoutWorkPhase =>
-          candidate.kind === 'work' && candidate.supersetRound === phase.supersetRound &&
-          candidate.exercise.id !== phase.exercise.id
-      )
-    : undefined;
-  const nextWorkHint = phase?.kind !== 'work'
-    ? null
-    : nextWorkPhase?.exercise.id === phase.exercise.id &&
-        nextWorkPhase.plannedSetNumber === phase.plannedSetNumber &&
-        nextWorkPhase.segmentNumber !== phase.segmentNumber
-      ? `Next drop ${nextWorkPhase.segmentNumber - 1}${nextSupersetExercise ? ` · then ${nextSupersetExercise.exercise.name}` : ''}`
-      : nextSupersetExercise
-        ? `Next: ${nextSupersetExercise.exercise.name}`
-        : null;
+  const toggleMenu = () => {
+    haptics.press();
+    setMenuOpen((open) => !open);
+  };
 
-  const canAddSet = Boolean(currentExercise);
-  const canRemoveSet = (currentExercise?.targetSets ?? 0) > 0;
+  // The first phase of an exercise is where the movement begins: the edge of
+  // the screen glows green.
+  const newExerciseTrigger = phase?.kind === 'work' && phase.setNumber === 1
+    ? `${phase.exercise.id}:${phase.setNumber}`
+    : null;
 
   return (
-    <View
-      style={[styles.container, isRest ? styles.containerInverted : null]}
-      testID="session-screen"
-      {...swipe}>
-      <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-        style={styles.flex}>
-        <ScrollView
-          contentContainerStyle={[styles.scroll, { paddingTop: insets.top + spacing.xl }]}
-          keyboardShouldPersistTaps="handled"
-          showsVerticalScrollIndicator={false}
-          contentInsetAdjustmentBehavior="never"
-          bounces={false}
-          alwaysBounceVertical={false}
-          overScrollMode="never">
-          <View style={styles.header}>
-            <Pressable
-              accessibilityRole="button"
-              accessibilityLabel="Swap exercise"
-              onPress={() => setPickerOpen(true)}
-              style={styles.namePress}>
-              <Text
-                variant="title"
-                color={isRest ? colors.textOnInverted : colors.text}
-                numberOfLines={2}
-                style={styles.exerciseName}>
-                {currentExercise?.name ?? 'Workout'}
-              </Text>
-            </Pressable>
-            <View style={styles.headerMeta}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={menuOpen ? 'Close options' : 'More options'}
-                accessibilityState={{ expanded: menuOpen }}
-                onPress={() => {
-                  haptics.press();
-                  setMenuOpen((open) => !open);
-                }}
-                hitSlop={12}
-                style={({ pressed }) => [
-                  styles.dotsTrigger,
-                  pressed ? styles.dotsTriggerPressed : null,
-                ]}
-                testID="edit-workout">
-                <Animated.View style={[styles.dots, { transform: [{ rotate: dotsRotate }] }]}>
-                  <View style={[styles.dot, isRest ? styles.dotInverted : null]} />
-                  <View style={[styles.dot, isRest ? styles.dotInverted : null]} />
-                  <View style={[styles.dot, isRest ? styles.dotInverted : null]} />
-                </Animated.View>
-              </Pressable>
-            </View>
-          </View>
-          <Text
-            variant="caption"
-            color={isRest ? 'rgba(255, 255, 255, 0.6)' : colors.textSecondary}
-            style={styles.underName}>
-            {isRest ? 'Resting' : setLabel}
-          </Text>
-          {nextWorkHint ? (
-            <Text
-              variant="caption"
-              color={isRest ? 'rgba(255, 255, 255, 0.55)' : colors.textTertiary}
-              style={styles.nextExercise}>
-              {nextWorkHint}
-            </Text>
-          ) : null}
-          {phaseInstruction ? (
-            <Text
-              variant="caption"
-              color={isRest ? 'rgba(255, 255, 255, 0.55)' : colors.textSecondary}
-              style={styles.phaseInstruction}>
-              {phaseInstruction}
-            </Text>
-          ) : null}
-
-          <View style={styles.ringRow}>
-            <View style={styles.ringButtonGroup}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Remove set"
-                onPress={() => void handleRemoveSet()}
-                disabled={!canRemoveSet}
-                style={[styles.ringButton, !canRemoveSet ? styles.ringButtonDisabled : null]}
-                testID="remove-set">
-                <Text style={styles.ringButtonText}>−</Text>
-              </Pressable>
-              <Text
-                variant="caption"
-                color={isRest ? 'rgba(255, 255, 255, 0.6)' : colors.textSecondary}
-                style={styles.ringButtonLabel}>
-                Remove set
-              </Text>
-            </View>
-            <View style={styles.ring}>
-              <TimerRing
-                value={
-                  isRest
-                    ? formatRestCountdown(clocks.restRemainingMs)
-                    : formatDuration(clocks.exerciseSeconds)
-                }
-                label={isRest ? 'REST' : 'EXERCISE TIME'}
-                progress={isRest ? clocks.restProgress : setProgress}
-                inverted={isRest}
-                valueColor={restOverdue ? colors.dangerBright : undefined}
-                valueOpacity={restOverdue ? blink : undefined}
-              />
-            </View>
-            <View style={styles.ringButtonGroup}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Add set"
-                onPress={() => void handleAddSet()}
-                disabled={!canAddSet}
-                style={[styles.ringButton, !canAddSet ? styles.ringButtonDisabled : null]}
-                testID="add-set">
-                <Text style={styles.ringButtonText}>+</Text>
-              </Pressable>
-              <Text
-                variant="caption"
-                color={isRest ? 'rgba(255, 255, 255, 0.6)' : colors.textSecondary}
-                style={styles.ringButtonLabel}>
-                Add set
-              </Text>
-            </View>
-          </View>
-
-          <View style={styles.clocks}>
-            <Clock
-              label="Exercise"
-              value={formatDuration(clocks.exerciseSeconds)}
-              inverted={isRest}
-            />
-            <Clock
-              label="Rest"
-              value={formatDuration(clocks.restSeconds)}
-              inverted={isRest}
-            />
-          </View>
-
+    <View style={styles.screen}>
+      <View style={styles.stage} testID="session-screen" {...gestureHandlers}>
+        <Animated.View
+          style={[styles.strip, { transform: [{ translateX: swipeTranslateX }] }]}>
           {/*
-            The fields stay live through the rest, so the set that was just
-            logged can still be corrected.
+            The neighbouring phase, already drawn, sits exactly one page away on
+            the side the swipe is coming from.
           */}
-          {phase ? <View style={styles.inputs}>
-            <Field
-              label={`Weight (${weightUnit})`}
-              value={weightValue}
-              onChangeText={handleWeightChange}
-              keyboardType="decimal-pad"
-              placeholder="0"
-              inverted={isRest}
-              style={styles.input}
-              testID="set-weight"
-            />
-            <Field
-              label={phase?.kind === 'work' && phase.setKind === 'amrap' ? 'Actual reps' : 'Reps'}
-              value={repsValue}
-              onChangeText={handleRepsChange}
-              keyboardType="number-pad"
-              placeholder="0"
-              inverted={isRest}
-              style={styles.input}
-              testID="set-reps"
-            />
-          </View> : null}
-
-          {phase?.kind === 'work' && phase.setKind === 'amrap' && phase.repRangeMin !== null ? (
-            <Text variant="caption" tone={isRest ? 'textOnInverted' : 'textSecondary'}>
-              Minimum guidance: {phase.repRangeMin} reps
-            </Text>
-          ) : null}
-          {inputError ? <Text variant="caption" tone="danger">{inputError}</Text> : null}
-          {phase?.kind === 'work' && phase.exercise.supersetGroup ? (
-            <Button
-              label="Skip this exercise"
-              variant="secondary"
-              size="md"
-              onPress={() => void handleSkipSupersetMember()}
-              testID="skip-superset-member"
-            />
-          ) : null}
-          {phase?.kind === 'work' && phase.setKind === 'warmup' ? (
-            <Button
-              label="Skip warm-up"
-              variant="secondary"
-              size="md"
-              onPress={() => void handleSkipWarmup()}
-              testID="skip-warmup"
-            />
-          ) : null}
-          {hasRemainingDropSteps ? (
-            <Button
-              label="Skip remaining drops"
-              variant="secondary"
-              size="md"
-              disabled={saving}
-              onPress={() => void handleSkipRemainingDrops()}
-              testID="skip-remaining-drops"
-            />
-          ) : null}
-
-        </ScrollView>
-      </KeyboardAvoidingView>
-
-      <View style={styles.footer}>
-        {confirmingFinish ? (
-          <View style={styles.confirm}>
-            <Text
-              variant="subheading"
-              color={isRest ? colors.textOnInverted : colors.text}>
-              Finish workout?
-            </Text>
-            <View style={styles.confirmActions}>
-              <Button
-                label="Keep training"
-                variant="secondary"
-                size="md"
-                inverted={isRest}
-                onPress={() => setConfirmingFinish(false)}
-                style={styles.confirmButton}
-                testID="cancel-finish"
-              />
-              <Button
-                label="Finish"
-                size="md"
-                inverted={isRest}
-                onPress={handleFinish}
-                loading={saving}
-                style={styles.confirmButton}
-                testID="confirm-finish"
+          {peekView && peekDirection ? (
+            <View
+              pointerEvents="none"
+              accessibilityElementsHidden
+              importantForAccessibility="no-hide-descendants"
+              style={[
+                styles.peek,
+                { left: peekDirection === 'next' ? width : -width, width },
+              ]}>
+              <SessionPhasePage
+                view={peekView}
+                blink={stillBlink}
+                topInset={insets.top}
+                menuOpen={false}
+                dotsRotate={dotsRotate}
+                onToggleMenu={noop}
+                onOpenPicker={noop}
+                onWeightChange={noop}
+                onRepsChange={noop}
+                onAddSet={noop}
+                onRemoveSet={noop}
+                onSkipSupersetMember={noop}
+                onSkipWarmup={noop}
+                onSkipRemainingDrops={noop}
+                inputError={null}
+                saving={false}
+                confirmingFinish={false}
+                onCancelFinish={noop}
+                onShowFinish={noop}
+                onFinish={noop}
               />
             </View>
+          ) : null}
+
+          <View style={styles.page}>
+            <SessionPhasePage
+              view={view}
+              blink={blink}
+              topInset={insets.top}
+              menuOpen={menuOpen}
+              dotsRotate={dotsRotate}
+              onToggleMenu={toggleMenu}
+              onOpenPicker={() => setPickerOpen(true)}
+              onWeightChange={handleWeightChange}
+              onRepsChange={handleRepsChange}
+              onAddSet={() => void handleAddSet()}
+              onRemoveSet={() => void handleRemoveSet()}
+              onSkipSupersetMember={() => void handleSkipSupersetMember()}
+              onSkipWarmup={() => void handleSkipWarmup()}
+              onSkipRemainingDrops={() => void handleSkipRemainingDrops()}
+              inputError={inputError}
+              saving={saving}
+              confirmingFinish={confirmingFinish}
+              onCancelFinish={() => setConfirmingFinish(false)}
+              onShowFinish={() => setConfirmingFinish(true)}
+              onFinish={() => void handleFinish()}
+            />
           </View>
-        ) : (
-          <Button
-            label="Finish Workout"
-            variant="secondary"
-            size="md"
-            inverted={isRest}
-            onPress={() => setConfirmingFinish(true)}
-            testID="finish-workout"
-          />
-        )}
+        </Animated.View>
       </View>
+
+      <NewExerciseGlow trigger={newExerciseTrigger} />
 
       {menuOpen ? (
         <View style={styles.menuOverlay} pointerEvents="box-none">
@@ -1008,101 +784,25 @@ export default function ActiveSessionScreen() {
   );
 }
 
-function Clock({
-  label,
-  value,
-  inverted,
-}: {
-  label: string;
-  value: string;
-  inverted: boolean;
-}) {
-  return (
-    <View style={styles.clock}>
-      <Text
-        variant="eyebrow"
-        color={inverted ? 'rgba(255, 255, 255, 0.55)' : colors.textTertiary}>
-        {label}
-      </Text>
-      <Text
-        variant="metric"
-        color={inverted ? colors.textOnInverted : colors.text}
-        style={styles.clockValue}>
-        {value}
-      </Text>
-    </View>
-  );
-}
-
-function getSupersetLetter(exercises: { supersetGroup?: string | null }[], group?: string | null): string {
-  const groups = [...new Set(exercises.map((exercise) => exercise.supersetGroup).filter((value): value is string => Boolean(value)))];
-  const index = group ? groups.indexOf(group) : -1;
-  return index >= 0 ? String.fromCharCode(65 + (index % 26)) : 'A';
-}
-
-function formatSessionWeight(weightKg: number, system: 'metric' | 'imperial'): string {
-  return system === 'imperial'
-    ? `${Number(kgToLb(weightKg).toFixed(1))} lb`
-    : `${Number(weightKg.toFixed(1))} kg`;
-}
-
 const styles = StyleSheet.create({
-  container: {
+  screen: {
     flex: 1,
     backgroundColor: colors.background,
-    // The screen is driven by swipes, so a drag must not select text.
-    userSelect: 'none',
   },
-  containerInverted: {
-    backgroundColor: colors.inverted,
+  stage: {
+    flex: 1,
+    overflow: 'hidden',
   },
-  flex: {
+  strip: {
     flex: 1,
   },
-  scroll: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.xl,
-    paddingBottom: spacing.lg,
-    flexGrow: 1,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'flex-start',
-    justifyContent: 'space-between',
-    gap: spacing.base,
-  },
-  namePress: {
+  page: {
     flex: 1,
   },
-  headerMeta: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.sm,
-  },
-  dotsTrigger: {
-    width: 36,
-    height: 36,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginRight: -spacing.xs,
-  },
-  dotsTriggerPressed: {
-    opacity: 0.5,
-  },
-  dots: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: 3.5,
-  },
-  dot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: colors.text,
-  },
-  dotInverted: {
-    backgroundColor: colors.textOnInverted,
+  peek: {
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
   },
   menuOverlay: {
     ...StyleSheet.absoluteFill,
@@ -1145,91 +845,5 @@ const styles = StyleSheet.create({
   },
   menuOptionPressed: {
     backgroundColor: colors.surfaceMuted,
-  },
-  exerciseName: {
-    letterSpacing: -0.4,
-  },
-  underName: {
-    marginTop: spacing.xs,
-  },
-  nextExercise: {
-    marginTop: spacing.xs,
-  },
-  phaseInstruction: {
-    marginTop: spacing.xs,
-  },
-  ringRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'center',
-    gap: spacing.base,
-  },
-  ring: {
-    alignItems: 'center',
-    marginTop: spacing.xl,
-  },
-  ringButtonGroup: {
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  ringButton: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    borderWidth: 1,
-    borderColor: colors.border,
-    backgroundColor: colors.surface,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  ringButtonDisabled: {
-    opacity: 0.35,
-  },
-  ringButtonText: {
-    fontSize: 26,
-    lineHeight: 44,
-    fontWeight: '600',
-    textAlign: 'center',
-    color: colors.text,
-  },
-  ringButtonLabel: {
-    fontSize: 11,
-  },
-  clocks: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    gap: spacing.xxl,
-    marginTop: spacing.md,
-  },
-  clock: {
-    alignItems: 'center',
-    gap: 2,
-  },
-  clockValue: {
-    fontVariant: ['tabular-nums'],
-  },
-  inputs: {
-    flexDirection: 'row',
-    gap: spacing.md,
-    marginTop: spacing.xl,
-  },
-  input: {
-    flex: 1,
-  },
-  footer: {
-    paddingHorizontal: spacing.lg,
-    paddingTop: spacing.md,
-    paddingBottom: spacing.lg,
-    gap: spacing.sm,
-  },
-  confirm: {
-    gap: spacing.md,
-  },
-  confirmActions: {
-    flexDirection: 'row',
-    gap: spacing.md,
-  },
-  confirmButton: {
-    flex: 1,
   },
 });

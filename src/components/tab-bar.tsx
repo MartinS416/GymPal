@@ -1,25 +1,52 @@
-import type { ReactNode } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
 import type { BottomTabBarProps } from 'expo-router/js-tabs';
+import { SymbolView } from 'expo-symbols';
+import type { AndroidSymbol, SFSymbol } from 'expo-symbols';
+import androidMedium from 'expo-symbols/androidWeights/medium';
+import androidRegular from 'expo-symbols/androidWeights/regular';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
-import { HistoryIcon, HomeIcon, ProgressIcon, SettingsIcon } from '@/components/tab-icons';
 import { Text } from '@/components/text';
 import { colors, spacing } from '@/constants/theme';
 import { useKeyboardVisible } from '@/hooks/use-keyboard-visible';
 
-const ICONS: Record<string, (props: { color: string; size?: number }) => ReactNode> = {
-  home: HomeIcon,
-  history: HistoryIcon,
-  progress: ProgressIcon,
-  settings: SettingsIcon,
+/** The native SF Symbol and its Material Symbols counterparts. */
+type SymbolNames = { ios: SFSymbol; android: AndroidSymbol; web: AndroidSymbol };
+
+type TabIcon = {
+  idle: SymbolNames;
+  selected: SymbolNames;
+};
+
+/**
+ * iOS tab bars use the filled variant of a symbol for the selected tab. On
+ * Android and the web the Material Symbols font has one outline glyph, so the
+ * selected icon is drawn a little heavier instead.
+ */
+const ICONS: Record<string, TabIcon> = {
+  home: {
+    idle: { ios: 'house', android: 'home', web: 'home' },
+    selected: { ios: 'house.fill', android: 'home', web: 'home' },
+  },
+  history: {
+    idle: { ios: 'clock.arrow.circlepath', android: 'history', web: 'history' },
+    selected: { ios: 'clock.arrow.circlepath', android: 'history', web: 'history' },
+  },
+  progress: {
+    idle: { ios: 'chart.bar', android: 'bar_chart', web: 'bar_chart' },
+    selected: { ios: 'chart.bar.fill', android: 'bar_chart', web: 'bar_chart' },
+  },
+  settings: {
+    idle: { ios: 'gearshape', android: 'settings', web: 'settings' },
+    selected: { ios: 'gearshape.fill', android: 'settings', web: 'settings' },
+  },
 };
 
 /**
  * The bottom tab bar.
  *
  * GymPal draws its own so the bar matches the rest of the interface: a white
- * surface, a hairline rule, monochrome glyphs and small labels. The selected
+ * surface, a hairline rule, native tab glyphs and small labels. The selected
  * tab is the only black element in the row.
  */
 export function TabBar({ state, descriptors, emitter, navigateToTab }: BottomTabBarProps) {
@@ -40,7 +67,7 @@ export function TabBar({ state, descriptors, emitter, navigateToTab }: BottomTab
         const options = descriptors[route.key]?.options;
         const focused = state.index === index;
         const title = typeof options?.title === 'string' ? options.title : route.name;
-        const Icon = ICONS[route.name];
+        const icon = ICONS[route.name];
         const tint = focused ? colors.text : colors.textTertiary;
 
         const onPress = () => {
@@ -63,7 +90,17 @@ export function TabBar({ state, descriptors, emitter, navigateToTab }: BottomTab
             accessibilityLabel={options?.tabBarAccessibilityLabel ?? title}
             onPress={onPress}
             style={({ pressed }) => [styles.item, pressed ? styles.itemPressed : null]}>
-            {Icon ? <Icon color={tint} /> : null}
+            {icon ? (
+              <SymbolView
+                name={focused ? icon.selected : icon.idle}
+                size={25}
+                tintColor={tint}
+                weight={focused
+                  ? { ios: 'regular', android: androidMedium }
+                  : { ios: 'regular', android: androidRegular }}
+                testID={`tab-icon-${route.name}`}
+              />
+            ) : null}
             <Text variant="label" tone={focused ? 'text' : 'textTertiary'} style={styles.label}>
               {title}
             </Text>

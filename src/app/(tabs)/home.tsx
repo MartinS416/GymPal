@@ -1,37 +1,48 @@
 import { useCallback, useState } from 'react';
 import { Pressable, StyleSheet, View } from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent } from 'react-native';
 import { Redirect, useRouter } from 'expo-router';
 
 import { BottomSheet } from '@/components/bottom-sheet';
 import { Button } from '@/components/button';
-import { Divider } from '@/components/card';
 import { MonthlyActivity } from '@/components/widgets/monthly-activity';
 import { WorkoutCount } from '@/components/widgets/workout-count';
-import { Highlights } from '@/components/widgets/highlights';
+import { WorkoutFeedCard } from '@/components/workout-feed-card';
 import { OptionsMenu } from '@/components/options-menu';
 import { Screen } from '@/components/screen';
+import { EmptyState, LoadingState } from '@/components/states';
 import { Text } from '@/components/text';
 import { colors, radius, spacing } from '@/constants/theme';
-import { formatHeight, formatWeight } from '@/lib/units';
 import { formatLongDate, startOfDay } from '@/lib/calendar';
 import { useAsyncData } from '@/hooks/use-async-data';
 import { useDatabase } from '@/db/database-provider';
 import { useProfile } from '@/state/profile-context';
+import { useRefreshOnFocus } from '@/hooks/use-refresh-on-focus';
 import { useTrainedDays } from '@/hooks/use-trained-days';
+import { useWorkoutFeed } from '@/hooks/use-workout-feed';
 
 /**
  * Home.
  *
- * Four things only: the name, a greeting, the measurements from onboarding and
- * the button that starts a workout. Everything else lives behind the "..."
- * menu, which slides its options in from the right. Under that: the last few
- * months of training as a strip of dots.
+ * The name, a greeting, the week's lift count and the training calendar, then
+ * the feed of finished workouts, with the button that starts a workout pinned
+ * below. The feed starts with ten sessions and appends more as the screen is
+ * scrolled. Everything else lives behind the "..." menu.
  */
 export default function HomeTab() {
   const router = useRouter();
   const database = useDatabase();
   const { profile } = useProfile();
   const { days, loading } = useTrainedDays();
+  const {
+    items: feed,
+    loading: feedLoading,
+    loadingMore,
+    error: feedError,
+    loadMore,
+    reload: reloadFeed,
+  } = useWorkoutFeed();
+  useRefreshOnFocus(reloadFeed);
   const [menuOpen, setMenuOpen] = useState(false);
   const [selectedDay, setSelectedDay] = useState<number | null>(null);
 
@@ -42,6 +53,16 @@ export default function HomeTab() {
   }, [database, selectedDay]);
   const { data: daySessions, loading: dayLoading } = useAsyncData(dayLoader);
 
+  const handleScroll = useCallback(
+    (event: NativeSyntheticEvent<NativeScrollEvent>) => {
+      const { contentOffset, contentSize, layoutMeasurement } = event.nativeEvent;
+      if (contentOffset.y + layoutMeasurement.height >= contentSize.height - 240) {
+        loadMore();
+      }
+    },
+    [loadMore]
+  );
+
   if (!profile) {
     return <Redirect href="/onboarding" />;
   }
@@ -51,6 +72,8 @@ export default function HomeTab() {
   return (
     <Screen
       bottomInset={0}
+      onScroll={handleScroll}
+      testID="home-scroll"
       footer={
         <Button
           label="Start workout"
@@ -100,27 +123,48 @@ export default function HomeTab() {
         <Text variant="title">Hello, {profile.name}</Text>
       </View>
 
-      <View style={styles.summary}>
-        <View style={styles.summaryItem}>
-          <Text variant="eyebrow">Height</Text>
-          <Text variant="metric">{formatHeight(profile.heightCm, profile.system)}</Text>
-        </View>
-        <Divider style={styles.summaryDivider} />
-        <View style={styles.summaryItem}>
-          <Text variant="eyebrow">Weight</Text>
-          <Text variant="metric">{formatWeight(profile.weightKg, profile.system)}</Text>
-        </View>
-      </View>
-
       {loading ? null : (
         <View style={styles.activity}>
+          <WorkoutCount />
           <MonthlyActivity trainedDays={new Set(days)} onDayPress={(day) => setSelectedDay(day)} />
-          <View style={styles.widgetRow}>
-            <WorkoutCount />
-            <Highlights />
-          </View>
         </View>
       )}
+
+      <View style={styles.feed} testID="home-feed">
+        <Text variant="heading">Workout feed</Text>
+
+        {feedLoading ? (
+          <LoadingState lines={3} />
+        ) : feed.length === 0 ? (
+          <EmptyState
+            title="No workouts yet"
+            description="Finished workouts will appear here."
+            compact
+          />
+        ) : (
+          <View style={styles.feedList}>
+            {feed.map((session) => (
+              <WorkoutFeedCard
+                key={session.id}
+                session={session}
+                profileName={profile.name}
+                onPress={() => router.push(`/sessions/${session.id}`)}
+              />
+            ))}
+          </View>
+        )}
+
+        {loadingMore ? (
+          <Text variant="caption" tone="textTertiary" align="center" testID="feed-loading-more">
+            Loading more…
+          </Text>
+        ) : null}
+        {feedError ? (
+          <Text variant="caption" tone="danger" align="center">
+            Some workouts could not be loaded.
+          </Text>
+        ) : null}
+      </View>
 
       <BottomSheet
         visible={selectedDay !== null}
@@ -191,25 +235,15 @@ const styles = StyleSheet.create({
   greeting: {
     marginTop: spacing.xxl,
   },
-  summary: {
-    marginTop: spacing.xl,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xl,
-  },
-  summaryItem: {
-    gap: spacing.xs,
-  },
-  summaryDivider: {
-    width: StyleSheet.hairlineWidth,
-    height: 34,
-  },
   activity: {
     marginTop: spacing.xl,
     gap: spacing.md,
   },
-  widgetRow: {
-    flexDirection: 'row',
+  feed: {
+    marginTop: spacing.xxl,
+    gap: spacing.md,
+  },
+  feedList: {
     gap: spacing.md,
   },
   dayList: {

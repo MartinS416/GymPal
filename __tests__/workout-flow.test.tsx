@@ -120,6 +120,7 @@ describe('workout flow', () => {
     });
     await waitFor(() => expect(screen.getByTestId('workout-start')).toBeTruthy());
     expect(screen.getByText('Bench Press')).toBeTruthy();
+    expect(screen.getByTestId('muscle-diagram')).toBeTruthy();
 
     // 3. Start the workout.
     await press('workout-start');

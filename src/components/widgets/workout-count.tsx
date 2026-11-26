@@ -1,76 +1,58 @@
-import { Pressable, StyleSheet, View } from 'react-native';
+import { Pressable, StyleSheet } from 'react-native';
 
 import { Chevron } from '@/components/chevron';
 import { Text } from '@/components/text';
-import { colors, radius, spacing } from '@/constants/theme';
+import { spacing } from '@/constants/theme';
 import { useHaptics } from '@/hooks/use-haptics';
 import { useWorkoutCount } from '@/hooks/use-workout-count';
 
 /**
- * A compact widget showing how many workouts landed in the selected period.
+ * The lift count above the calendar.
  *
- * Half the footprint of the activity calendar. Tap to cycle the period through
- * week, month and year. Follows the app's clean monochrome palette.
+ * Reads as one sentence ("3 lifts this week") and taps through week, month,
+ * year and lifetime. The chevron is the only affordance; the row has no card
+ * so the calendar stays the focus of the screen.
  */
 export function WorkoutCount() {
   const haptics = useHaptics();
   const { count, loading, label, cycle } = useWorkoutCount();
+  const noun = count === 1 ? 'lift' : 'lifts';
 
   return (
     <Pressable
+      testID="home-lift-count"
       accessibilityRole="button"
-      accessibilityLabel={`${count} workouts ${label}. Tap to change period.`}
+      accessibilityLabel={
+        loading
+          ? 'Loading lift count'
+          : `${count} ${noun} ${label}. Tap to change the period.`
+      }
+      accessibilityHint="Switches between this week, this month, this year and lifetime."
       onPress={() => {
         haptics.tick();
         cycle();
       }}
-      style={({ pressed }) => [styles.card, pressed ? styles.pressed : null]}>
-      <View style={styles.row}>
-        <Text variant="display" tone="text" style={styles.number}>
-          {loading ? '—' : count}
-        </Text>
-        <Chevron direction="down" size={10} color="textTertiary" />
-      </View>
-      <Text variant="eyebrow" tone="textSecondary" style={styles.label}>
-        {label}
+      hitSlop={8}
+      style={({ pressed }) => [styles.row, pressed ? styles.pressed : null]}>
+      <Text variant="heading" numberOfLines={1} style={styles.label}>
+        {loading ? '—' : count} {noun} {label}
       </Text>
-      <Text variant="caption" tone="textTertiary" style={styles.hint}>
-        tap to change
-      </Text>
+      <Chevron direction="down" size={10} color="textTertiary" />
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
-  card: {
-    flex: 1,
-    backgroundColor: colors.surface,
-    borderRadius: radius.lg,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: colors.border,
-    padding: spacing.base,
-    gap: spacing.xs,
-    justifyContent: 'center',
-  },
-  pressed: {
-    backgroundColor: colors.surfaceMuted,
-  },
   row: {
+    alignSelf: 'flex-start',
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: spacing.sm,
   },
-  number: {
-    fontSize: 34,
-    lineHeight: 40,
-    fontWeight: '700',
-    letterSpacing: -0.6,
+  pressed: {
+    opacity: 0.6,
   },
   label: {
-    letterSpacing: 0.5,
-  },
-  hint: {
-    fontSize: 10,
-    lineHeight: 12,
+    letterSpacing: -0.2,
   },
 });

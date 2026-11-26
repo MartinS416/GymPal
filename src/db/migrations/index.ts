@@ -10,6 +10,7 @@ import { up as sessionPhases } from './005-session-phases';
 import { up as progressSchema } from './006-progress';
 import { up as sessionExerciseFields } from './007-session-exercise-fields';
 import { up as flexibleSetStyles } from './008-flexible-set-styles';
+import { up as sessionWorkTotal } from './009-session-work-total';
 
 export type Migration = {
   version: number;
@@ -33,6 +34,7 @@ export const MIGRATIONS: Migration[] = [
   { version: 6, name: 'progress', up: progressSchema },
   { version: 7, name: 'session-exercise-fields', up: sessionExerciseFields },
   { version: 8, name: 'flexible-set-styles', up: flexibleSetStyles },
+  { version: 9, name: 'session-work-total', up: sessionWorkTotal },
 ];
 
 export const LATEST_VERSION = MIGRATIONS.reduce(

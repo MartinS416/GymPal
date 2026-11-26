@@ -2,8 +2,9 @@
  * GymPal design tokens.
  *
  * The interface is deliberately monochrome: a white canvas, black type and a
- * single hairline grey for separation. The only accent in the entire product is
- * `danger`, reserved for validation messages.
+ * single hairline grey for separation. The accents are `danger`, reserved for
+ * validation messages, and `success`, used only for the edge glow that marks
+ * the start of a new exercise.
  */
 
 export const colors = {
@@ -33,6 +34,12 @@ export const colors = {
   /** A brighter red, for use on the inverted (black) screen. */
   dangerBright: '#FF6B5E',
   dangerSurface: '#FEF4F3',
+
+  /** The greens of the new-exercise edge glow, running bright to deep. */
+  success: '#16C060',
+  successBright: '#22E07A',
+  successCool: '#10B981',
+  successDeep: '#059669',
 } as const;
 
 export const spacing = {

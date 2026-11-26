@@ -6,8 +6,10 @@ import { BackButton } from '@/components/back-button';
 import { Button } from '@/components/button';
 import { Card, Divider } from '@/components/card';
 import { LoadingScreen } from '@/components/loading-screen';
+import { MuscleChips, MuscleDiagram } from '@/components/muscle-diagram';
 import { Screen } from '@/components/screen';
 import { ScreenHeader } from '@/components/screen-header';
+import { ShareButton } from '@/components/share-button';
 import { EmptyState } from '@/components/states';
 import { Text } from '@/components/text';
 import { Field } from '@/components/text-input';
@@ -19,6 +21,7 @@ import { useAsyncData } from '@/hooks/use-async-data';
 import { useProfile } from '@/state/profile-context';
 import { formatDuration, formatSessionDate, formatTimeOfDay } from '@/workouts/timer';
 import { kgToLb } from '@/lib/units';
+import { muscleSummary, musclesForWorkout } from '@/workouts/muscles';
 import { normalizeSetConfiguration } from '@/workouts/set-types';
 
 /**
@@ -80,6 +83,7 @@ export default function SessionDetailScreen() {
   );
   const volume = system === 'imperial' ? kgToLb(detail.totalVolumeKg) : detail.totalVolumeKg;
   const volumeUnit = system === 'imperial' ? 'lb' : 'kg';
+  const muscles = musclesForWorkout(detail.exercises);
 
   const saveSet = async (
     exercise: SessionDetail['exercises'][number],
@@ -168,7 +172,10 @@ export default function SessionDetailScreen() {
           testID="session-finish"
         />
       }>
-      <BackButton onPress={() => router.back()} testID="session-back" />
+      <View style={styles.topBar}>
+        <BackButton onPress={() => router.back()} testID="session-back" />
+        <ShareButton testID="session-share" />
+      </View>
 
       <View style={styles.header}>
         <ScreenHeader
@@ -191,6 +198,14 @@ export default function SessionDetailScreen() {
           testID="stat-volume"
         />
       </View>
+
+      {muscles.length > 0 ? (
+        <Card style={styles.muscleCard}>
+          <Text variant="eyebrow">Muscles worked</Text>
+          <MuscleDiagram muscles={muscles} />
+          <MuscleChips muscles={muscles} />
+        </Card>
+      ) : null}
 
       {detail.exercises.length === 0 ? (
         <View style={styles.missing}>
@@ -224,10 +239,10 @@ export default function SessionDetailScreen() {
                           ? 'Skipped'
                           : 'Not logged'}
                     </Text>
+                    <Text variant="caption" tone="textTertiary">
+                      {muscleSummary(exercise)}
+                    </Text>
                   </View>
-                  <Text variant="caption" tone="textTertiary">
-                    {exercise.muscleGroup}
-                  </Text>
                 </View>
                 {exerciseSets.length > 0 ? (
                   <>
@@ -422,6 +437,11 @@ function Stat({
 }
 
 const styles = StyleSheet.create({
+  topBar: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
   header: {
     marginTop: spacing.lg,
   },
@@ -437,6 +457,10 @@ const styles = StyleSheet.create({
   stat: {
     minWidth: 72,
     gap: 2,
+  },
+  muscleCard: {
+    marginTop: spacing.xl,
+    gap: spacing.md,
   },
   exercises: {
     marginTop: spacing.xl,

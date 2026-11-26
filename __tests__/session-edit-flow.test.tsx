@@ -93,6 +93,9 @@ describe('finished session editing', () => {
     await renderRouter(APP_DIR, { initialUrl: `/sessions/${sessionId}` });
 
     await waitFor(() => expect(screen.getAllByTestId(/session-set-\d+-weight/).length).toBe(2));
+    expect(screen.getByTestId('muscle-diagram')).toBeTruthy();
+    expect(screen.getByTestId('session-share')).toBeTruthy();
+    expect(screen.getByText('Chest · Shoulders · Triceps')).toBeTruthy();
 
     const [firstWeight] = screen.getAllByTestId(/session-set-\d+-weight/);
     const firstId = setId(firstWeight.props.testID);

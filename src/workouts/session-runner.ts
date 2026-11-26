@@ -426,6 +426,7 @@ export async function advancePhase(
       restSeconds: phase.exercise.restSeconds,
       phaseIndex: currentIndex + 1,
       exerciseId: next?.exercise.exerciseId ?? phase.exercise.exerciseId,
+      stop: !next,
     });
     return currentIndex + 1;
   }
@@ -462,11 +463,13 @@ export async function advancePhase(
     );
   }
 
+  const next = phases[currentIndex + 1];
   await switchSessionPhase(database.raw, sessionId, {
     kind: 'work',
     restSeconds: phase.durationSeconds,
     phaseIndex: currentIndex + 1,
-    exerciseId: phases[currentIndex + 1]?.exercise.exerciseId ?? phase.exercise.exerciseId,
+    exerciseId: next?.exercise.exerciseId ?? phase.exercise.exerciseId,
+    stop: !next,
   });
   return currentIndex + 1;
 }

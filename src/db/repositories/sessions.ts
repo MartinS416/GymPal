@@ -29,6 +29,8 @@ export type WorkoutSession = {
   restStartedAt: number | null;
   /** Rest time banked so far, in seconds. */
   restTotalSeconds: number;
+  /** Work time performed across the whole session, in seconds. */
+  workTotalSeconds: number;
   /** When the current run of work started. Null while resting. */
   exerciseStartedAt: number | null;
   /** Work time banked for the current set, in seconds. */
@@ -110,6 +112,7 @@ type SessionRow = {
   rest_ends_at: number | null;
   rest_started_at: number | null;
   rest_total_seconds: number;
+  work_total_seconds: number;
   exercise_started_at: number | null;
   exercise_elapsed_seconds: number;
   phase_index: number;
@@ -155,6 +158,7 @@ function toSession(row: SessionRow): WorkoutSession {
     restEndsAt: row.rest_ends_at,
     restStartedAt: row.rest_started_at ?? null,
     restTotalSeconds: row.rest_total_seconds ?? 0,
+    workTotalSeconds: row.work_total_seconds ?? 0,
     exerciseStartedAt: row.exercise_started_at ?? null,
     exerciseElapsedSeconds: row.exercise_elapsed_seconds ?? 0,
     phaseIndex: row.phase_index ?? 0,
@@ -362,31 +366,49 @@ export async function getSessionDetail(
 export async function switchSessionPhase(
   db: SQLiteDatabase,
   sessionId: number,
-  next: { kind: 'work' | 'rest'; restSeconds: number; phaseIndex: number; exerciseId?: number }
+  next: {
+    kind: 'work' | 'rest';
+    restSeconds: number;
+    phaseIndex: number;
+    exerciseId?: number;
+    /** True when the timeline is finished and the clock should stop. */
+    stop?: boolean;
+  }
 ): Promise<void> {
   const now = Date.now();
-  const isWork = next.kind === 'work';
+  const session = await getSession(db, sessionId);
+  const isWork = next.kind === 'work' && !next.stop;
+  const isRest = next.kind === 'rest' && !next.stop;
+
+  // Bank whatever run of work and rest is ending before the next one starts.
+  const workSeconds = session?.exerciseStartedAt
+    ? Math.max(0, Math.floor((now - session.exerciseStartedAt) / 1000))
+    : 0;
+  const restSeconds = session?.restStartedAt
+    ? Math.max(0, Math.floor((now - session.restStartedAt) / 1000))
+    : 0;
+  const exerciseElapsedSeconds = isWork || next.stop
+    ? 0
+    : (session?.exerciseElapsedSeconds ?? 0) + workSeconds;
 
   await db.runAsync(
     `UPDATE workout_sessions
-        SET exercise_elapsed_seconds = CASE WHEN ? = 'work' THEN 0
-             ELSE exercise_elapsed_seconds
-                  + CASE WHEN exercise_started_at IS NOT NULL THEN (? - exercise_started_at) / 1000
-                         ELSE 0 END
-        END,
-        exercise_started_at = CASE WHEN ? = 'work' THEN ? ELSE NULL END,
-        rest_started_at = ?,
-        rest_ends_at = ?,
-        phase_index = ?,
-        current_exercise_id = COALESCE(?, current_exercise_id),
-        updated_at = ?
+        SET work_total_seconds = work_total_seconds + ?,
+            rest_total_seconds = rest_total_seconds + ?,
+            exercise_elapsed_seconds = ?,
+            exercise_started_at = ?,
+            rest_started_at = ?,
+            rest_ends_at = ?,
+            phase_index = ?,
+            current_exercise_id = COALESCE(?, current_exercise_id),
+            updated_at = ?
       WHERE id = ?`,
-    next.kind,
-    now,
-    next.kind,
+    workSeconds,
+    restSeconds,
+    exerciseElapsedSeconds,
     isWork ? now : null,
-    isWork ? null : now,
-    isWork ? null : now + Math.max(0, next.restSeconds) * 1000,
+    isRest ? now : null,
+    isRest ? now + Math.max(0, next.restSeconds) * 1000 : null,
     next.phaseIndex,
     next.exerciseId ?? null,
     now,

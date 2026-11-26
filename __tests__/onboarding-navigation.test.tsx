@@ -79,8 +79,7 @@ describe('GymPal onboarding flow', () => {
     await waitFor(() => expect(screen).toHavePathname('/home'));
 
     expect(screen.getByText(/Hello, Alex Carter/)).toBeTruthy();
-    expect(screen.getByText('180 cm')).toBeTruthy();
-    expect(screen.getByText('80 kg')).toBeTruthy();
+    expect(screen.getByTestId('home-lift-count')).toBeTruthy();
   });
 
   it('keeps the user on the wizard and explains what is missing', async () => {

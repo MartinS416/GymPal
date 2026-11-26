@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import type { ReactNode } from 'react';
 import { KeyboardAvoidingView, Platform, ScrollView, StyleSheet, useWindowDimensions, View } from 'react-native';
-import type { StyleProp, ViewStyle } from 'react-native';
+import type { NativeScrollEvent, NativeSyntheticEvent, StyleProp, ViewStyle } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 
@@ -28,6 +28,10 @@ export type ScreenProps = {
    * Defaults to false to prevent rubber-band up-and-down movement.
    */
   bounces?: boolean;
+  /** Called as the scroll view moves; use it to trigger infinite loading. */
+  onScroll?: (event: NativeSyntheticEvent<NativeScrollEvent>) => void;
+  /** Test handle for the scroll view. */
+  testID?: string;
 };
 
 /**
@@ -44,6 +48,8 @@ export function Screen({
   contentContainerStyle,
   bottomInset,
   bounces = false,
+  onScroll,
+  testID,
 }: ScreenProps) {
   const insets = useSafeAreaInsets();
   const { width } = useWindowDimensions();
@@ -96,6 +102,9 @@ export function Screen({
             alwaysBounceVertical={false}
             overScrollMode="never"
             scrollEnabled={canScroll}
+            onScroll={onScroll}
+            scrollEventThrottle={100}
+            testID={testID}
             onLayout={(e) => {
               setContainerHeight(e.nativeEvent.layout.height);
             }}>
