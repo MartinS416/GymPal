@@ -28,12 +28,18 @@ export type WorkoutActivityProps = {
   exercise: string;
   /** "Set 2 of 4", or "Set 2" when the plan has no target. */
   setLabel: string;
+  /** The exercise prescription in the familiar "4 × 8–12" format. */
+  setsRepsLabel: string;
   /** Start of the timer, in epoch milliseconds. */
   timerLower: number;
   /** End of the timer, in epoch milliseconds. */
   timerUpper: number;
   /** True for the rest countdown, false for the exercise clock. */
   countsDown: boolean;
+  /** Start of the whole-workout elapsed timer, in epoch milliseconds. */
+  workoutTimerLower: number;
+  /** End of the whole-workout elapsed timer, in epoch milliseconds. */
+  workoutTimerUpper: number;
   /** How far through the planned sets of the exercise, 0 to 1. */
   progress: number;
 };
@@ -46,6 +52,9 @@ export type WorkoutActivityInput = {
   /** The set being worked, or the set just finished while resting. */
   setNumber: number;
   targetSets: number;
+  /** Planned rep range for the exercise. */
+  targetRepMin: number;
+  targetRepMax: number;
   /** Sets already logged for the exercise in focus. */
   setsLogged: number;
   /** When the exercise clock was last started, in epoch milliseconds. */
@@ -54,6 +63,8 @@ export type WorkoutActivityInput = {
   exerciseElapsedSeconds: number;
   /** When the rest ends, in epoch milliseconds; null while working. */
   restEndsAt: number | null;
+  /** When the workout began, used by the Dynamic Island total-time clock. */
+  sessionStartedAt: number;
 };
 
 /** The slice of ActivityKit the app talks to. */
@@ -77,6 +88,23 @@ function setLabel(setNumber: number, targetSets: number): string {
   return targetSets > 0 ? `Set ${setNumber} of ${targetSets}` : `Set ${setNumber}`;
 }
 
+function setsRepsLabel(targetSets: number, repMin: number, repMax: number): string {
+  const sets = targetSets > 0 ? String(targetSets) : '—';
+  const minimum = Math.max(0, repMin);
+  const maximum = Math.max(0, repMax);
+
+  if (minimum > 0 && maximum > minimum) {
+    return `${sets} × ${minimum}–${maximum}`;
+  }
+  if (maximum > 0) {
+    return `${sets} × ${maximum}`;
+  }
+  if (minimum > 0) {
+    return `${sets} × ${minimum}+`;
+  }
+  return `${sets} × reps`;
+}
+
 /**
  * Builds the props for a phase.
  *
@@ -97,13 +125,21 @@ export function buildWorkoutActivityProps(
     workout: workoutLabel(input.workoutTitle),
     exercise: input.exerciseName,
     setLabel: setLabel(input.setNumber, input.targetSets),
+    setsRepsLabel: setsRepsLabel(
+      input.targetSets,
+      input.targetRepMin,
+      input.targetRepMax
+    ),
+    workoutTimerLower: input.sessionStartedAt,
+    workoutTimerUpper: input.sessionStartedAt + WORK_ACTIVITY_TIMER_CEILING_MS,
     progress,
   };
 
   if (input.phase === 'work') {
-    const startedAt =
-      input.exerciseStartedAt ??
-      now - Math.max(0, input.exerciseElapsedSeconds) * 1000;
+    const bankedMilliseconds = Math.max(0, input.exerciseElapsedSeconds) * 1000;
+    const startedAt = input.exerciseStartedAt
+      ? input.exerciseStartedAt - bankedMilliseconds
+      : now - bankedMilliseconds;
 
     return {
       ...common,

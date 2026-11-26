@@ -15,10 +15,13 @@ function input(overrides: Partial<WorkoutActivityInput> = {}): WorkoutActivityIn
     exerciseName: 'Bench Press',
     setNumber: 2,
     targetSets: 4,
+    targetRepMin: 8,
+    targetRepMax: 12,
     setsLogged: 1,
     exerciseStartedAt: NOW,
     exerciseElapsedSeconds: 0,
     restEndsAt: null,
+    sessionStartedAt: NOW - 10 * 60_000,
     ...overrides,
   };
 }
@@ -31,21 +34,26 @@ describe('workout live activity', () => {
     expect(props.workout).toBe('Push Day');
     expect(props.exercise).toBe('Bench Press');
     expect(props.setLabel).toBe('Set 2 of 4');
+    expect(props.setsRepsLabel).toBe('4 × 8–12');
     expect(props.countsDown).toBe(false);
     expect(props.timerLower).toBe(NOW);
     expect(props.timerUpper).toBe(NOW + WORK_ACTIVITY_TIMER_CEILING_MS);
+    expect(props.workoutTimerLower).toBe(NOW - 10 * 60_000);
+    expect(props.workoutTimerUpper).toBe(
+      NOW - 10 * 60_000 + WORK_ACTIVITY_TIMER_CEILING_MS
+    );
     expect(props.progress).toBe(0.25);
   });
 
   it('banks the exercise clock before the set it belongs to', () => {
     const props = buildWorkoutActivityProps(
-      input({ exerciseStartedAt: null, exerciseElapsedSeconds: 83 }),
+      input({ exerciseStartedAt: NOW - 7_000, exerciseElapsedSeconds: 83 }),
       NOW
     );
 
     expect(props.phase).toBe('work');
-    expect(props.timerLower).toBe(NOW - 83_000);
-    expect(props.timerUpper).toBe(NOW - 83_000 + WORK_ACTIVITY_TIMER_CEILING_MS);
+    expect(props.timerLower).toBe(NOW - 90_000);
+    expect(props.timerUpper).toBe(NOW - 90_000 + WORK_ACTIVITY_TIMER_CEILING_MS);
     expect(props.progress).toBe(0.25);
   });
 
@@ -85,9 +93,12 @@ describe('workout live activity', () => {
       workout: 'Push Day',
       exercise: 'Bench Press',
       setLabel: 'Set 2',
+      setsRepsLabel: '— × 8–12',
       timerLower: NOW,
       timerUpper: NOW + WORK_ACTIVITY_TIMER_CEILING_MS,
       countsDown: false,
+      workoutTimerLower: NOW - 10 * 60_000,
+      workoutTimerUpper: NOW - 10 * 60_000 + WORK_ACTIVITY_TIMER_CEILING_MS,
       progress: 0,
     });
   });

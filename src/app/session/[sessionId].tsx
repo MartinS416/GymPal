@@ -221,10 +221,13 @@ export default function ActiveSessionScreen() {
     exerciseName: phase?.exercise.name ?? null,
     setNumber: phase ? (phase.kind === 'work' ? phase.setNumber : phase.afterSet) : null,
     targetSets: phase?.exercise.targetSets ?? null,
+    targetRepMin: phase?.exercise.repRangeMin ?? null,
+    targetRepMax: phase?.exercise.repRangeMax ?? null,
     setsLogged: setsForCurrent.length,
     restEndsAt: session?.restEndsAt ?? null,
     exerciseStartedAt: session?.exerciseStartedAt ?? null,
     exerciseElapsedSeconds: session?.exerciseElapsedSeconds ?? 0,
+    sessionStartedAt: session?.startedAt ?? null,
   });
 
   // The values shown in the fields are already the user's; typing only has to

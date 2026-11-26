@@ -24,12 +24,15 @@ export type WorkoutLiveActivityOptions = {
   /** The set being worked, or the set just finished while resting. */
   setNumber: number | null;
   targetSets: number | null;
+  targetRepMin: number | null;
+  targetRepMax: number | null;
   /** Sets already logged for the exercise in focus. */
   setsLogged: number;
   restEndsAt: number | null;
   exerciseStartedAt: number | null;
   /** Seconds on the exercise clock before this phase, resting excluded. */
   exerciseElapsedSeconds: number;
+  sessionStartedAt: number | null;
 };
 
 export function useWorkoutLiveActivity(options: WorkoutLiveActivityOptions): void {
@@ -40,10 +43,13 @@ export function useWorkoutLiveActivity(options: WorkoutLiveActivityOptions): voi
     exerciseName,
     setNumber,
     targetSets,
+    targetRepMin,
+    targetRepMax,
     setsLogged,
     restEndsAt,
     exerciseStartedAt,
     exerciseElapsedSeconds,
+    sessionStartedAt,
   } = options;
 
   useEffect(() => {
@@ -52,7 +58,10 @@ export function useWorkoutLiveActivity(options: WorkoutLiveActivityOptions): voi
       phase === null ||
       exerciseName === null ||
       setNumber === null ||
-      targetSets === null
+      targetSets === null ||
+      targetRepMin === null ||
+      targetRepMax === null ||
+      sessionStartedAt === null
     ) {
       return;
     }
@@ -64,10 +73,13 @@ export function useWorkoutLiveActivity(options: WorkoutLiveActivityOptions): voi
         exerciseName,
         setNumber,
         targetSets,
+        targetRepMin,
+        targetRepMax,
         setsLogged,
         exerciseStartedAt,
         exerciseElapsedSeconds,
         restEndsAt,
+        sessionStartedAt,
       },
       Date.now()
     );
@@ -80,10 +92,13 @@ export function useWorkoutLiveActivity(options: WorkoutLiveActivityOptions): voi
     exerciseName,
     setNumber,
     targetSets,
+    targetRepMin,
+    targetRepMax,
     setsLogged,
     restEndsAt,
     exerciseStartedAt,
     exerciseElapsedSeconds,
+    sessionStartedAt,
   ]);
 
   // Leaving the workout — finishing it, abandoning it or backing out — takes
