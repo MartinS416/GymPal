@@ -1,0 +1,946 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>GymPal · Live Activity layout study</title>
+<style>
+  *, *::before, *::after { box-sizing: border-box; }
+
+  :root {
+    --page: #f3f2ee;
+    --ink: #0a0a0a;
+    --muted: rgba(10, 10, 10, 0.55);
+    --line: rgba(10, 10, 10, 0.12);
+    --lime: #d9ff57;
+    --quiet: rgba(0, 0, 0, 0.48);
+    --quiet-rest: rgba(255, 255, 255, 0.58);
+    --sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Segoe UI", system-ui, sans-serif;
+    --wallpaper:
+      radial-gradient(120% 80% at 82% 2%, rgba(217, 255, 87, 0.20), transparent 58%),
+      radial-gradient(110% 70% at 4% 100%, rgba(96, 112, 150, 0.38), transparent 62%),
+      linear-gradient(172deg, #26281f 0%, #151713 44%, #090a08 100%);
+  }
+
+  html { -webkit-text-size-adjust: 100%; }
+
+  body {
+    margin: 0;
+    background: var(--page);
+    color: var(--ink);
+    font-family: var(--sans);
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+
+  .page {
+    max-width: 1000px;
+    margin: 0 auto;
+    padding: 56px 32px 72px;
+  }
+
+  /* ---------- page header ---------- */
+
+  .eyebrow {
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 1.8px;
+    text-transform: uppercase;
+    color: var(--muted);
+  }
+
+  h1 {
+    margin: 10px 0 8px;
+    font-size: 34px;
+    font-weight: 600;
+    letter-spacing: -0.8px;
+    line-height: 1.1;
+  }
+
+  .lede {
+    margin: 0;
+    max-width: 620px;
+    font-size: 15px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 14px;
+    margin: 26px 0 44px;
+  }
+
+  .seg {
+    display: inline-flex;
+    padding: 3px;
+    gap: 3px;
+    background: rgba(10, 10, 10, 0.06);
+    border: 1px solid var(--line);
+    border-radius: 999px;
+  }
+
+  .seg button {
+    appearance: none;
+    border: 0;
+    background: transparent;
+    color: var(--ink);
+    font: inherit;
+    font-size: 13px;
+    font-weight: 550;
+    padding: 7px 18px;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.18s ease, color 0.18s ease;
+  }
+
+  .seg button[aria-pressed="true"] {
+    background: var(--ink);
+    color: #fff;
+  }
+
+  .toolbar-note {
+    font-size: 12px;
+    color: var(--muted);
+  }
+
+  /* ---------- case layout ---------- */
+
+  .cases {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: 56px 44px;
+  }
+
+  .case { width: 393px; }
+
+  .case-head { margin-bottom: 18px; }
+
+  .case-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 17px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+  }
+
+  .tag {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    padding: 3px 7px;
+    border-radius: 5px;
+    background: var(--ink);
+    color: #fff;
+  }
+
+  .tag.soft {
+    background: transparent;
+    color: var(--muted);
+    box-shadow: inset 0 0 0 1px var(--line);
+  }
+
+  .case-note {
+    margin: 7px 0 0;
+    font-size: 13px;
+    line-height: 1.5;
+    color: var(--muted);
+    min-height: 58px;
+  }
+
+  /* ---------- phone ---------- */
+
+  .phone {
+    width: 393px;
+    padding: 11px;
+    border-radius: 56px;
+    background: linear-gradient(180deg, #2a2a2c, #111 45%, #232325);
+    box-shadow:
+      0 30px 60px -22px rgba(10, 10, 10, 0.5),
+      inset 0 0 0 1px rgba(255, 255, 255, 0.14);
+  }
+
+  .screen {
+    position: relative;
+    height: 720px;
+    border-radius: 45px;
+    overflow: hidden;
+    background: var(--wallpaper);
+    isolation: isolate;
+  }
+
+  .screen::after {
+    content: "";
+    position: absolute;
+    inset: 0;
+    background: linear-gradient(180deg, rgba(0, 0, 0, 0.16), transparent 28%);
+    pointer-events: none;
+  }
+
+  .status {
+    position: relative;
+    z-index: 3;
+    height: 54px;
+    padding: 0 24px 0 32px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .status-time {
+    font-size: 16px;
+    font-weight: 650;
+    letter-spacing: -0.2px;
+    color: #fff;
+  }
+
+  .status-icons { display: block; opacity: 0.94; }
+
+  .cutout {
+    position: absolute;
+    z-index: 4;
+    top: 13px;
+    left: 50%;
+    transform: translateX(-50%);
+    width: 121px;
+    height: 35px;
+    border-radius: 999px;
+    background: #000;
+  }
+
+  .lock {
+    position: relative;
+    z-index: 2;
+    display: flex;
+    flex-direction: column;
+    height: calc(100% - 54px);
+  }
+
+  .lock-date {
+    margin-top: 22px;
+    text-align: center;
+    font-size: 15px;
+    font-weight: 550;
+    letter-spacing: -0.1px;
+    color: rgba(255, 255, 255, 0.8);
+  }
+
+  .lock-time {
+    margin-top: 1px;
+    text-align: center;
+    font-size: 82px;
+    font-weight: 280;
+    line-height: 1;
+    letter-spacing: -3px;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .lock-slot { padding: 56px 16px 0; }
+
+  .lock-bottom {
+    margin-top: auto;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 34px 26px;
+  }
+
+  .orb {
+    width: 42px;
+    height: 42px;
+    flex: none;
+    border-radius: 50%;
+    overflow: hidden;
+    background: rgba(255, 255, 255, 0.16);
+    display: grid;
+    place-items: center;
+    color: rgba(255, 255, 255, 0.86);
+  }
+
+  .home-bar {
+    width: 134px;
+    height: 5px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.55);
+    margin: 0 auto 9px;
+  }
+
+  /* ---------- Live Activity banner ---------- */
+
+  .la {
+    display: flex;
+    flex-direction: column;
+    gap: 9px;
+    padding: 16px;
+    border-radius: 24px;
+    background: #fff;
+    color: #000;
+    box-shadow: 0 18px 34px -12px rgba(0, 0, 0, 0.45);
+    transition: background 0.26s ease, color 0.26s ease;
+  }
+
+  .la.is-rest {
+    background: #000;
+    color: #fff;
+    box-shadow: 0 18px 34px -10px rgba(0, 0, 0, 0.7);
+  }
+
+  /* option A: clock and phase on one right-hand rail */
+  .la-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 14px;
+  }
+
+  .la-main { min-width: 0; }
+
+  .la-exercise {
+    font-size: 19px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    line-height: 1.2;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .la-set {
+    margin-top: 3px;
+    font-size: 13px;
+    line-height: 1.3;
+    color: var(--quiet);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.26s ease;
+  }
+
+  .la.is-rest .la-set { color: var(--quiet-rest); }
+
+  .la-rail {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 4px;
+    flex: none;
+  }
+
+  .la-badge {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 650;
+    letter-spacing: 1.4px;
+    line-height: 1;
+    text-transform: uppercase;
+    color: var(--quiet);
+    padding: 3px 0;
+    transition: color 0.26s ease, background 0.26s ease;
+  }
+
+  .la.is-rest .la-badge {
+    background: #fff;
+    color: #000;
+    padding: 3px 8px;
+    border-radius: 999px;
+    letter-spacing: 1.2px;
+  }
+
+  .la-timer {
+    font-size: 34px;
+    font-weight: 700;
+    letter-spacing: -0.9px;
+    line-height: 0.92;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .la-foot {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 12px;
+    font-size: 12px;
+    line-height: 1.2;
+    color: var(--quiet);
+    transition: color 0.26s ease;
+  }
+
+  .la.is-rest .la-foot { color: var(--quiet-rest); }
+
+  .la-workout {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .la-total {
+    flex: none;
+    display: inline-flex;
+    align-items: baseline;
+    gap: 5px;
+    letter-spacing: 0.9px;
+    text-transform: uppercase;
+    font-size: 10.5px;
+  }
+
+  .la-total b {
+    font-size: 12px;
+    font-weight: 650;
+    letter-spacing: 0;
+    font-variant-numeric: tabular-nums;
+    color: inherit;
+  }
+
+  .la.is-rest .la-total b { color: #fff; }
+
+  .la-track {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(0, 0, 0, 0.12);
+    overflow: hidden;
+    transition: background 0.26s ease;
+  }
+
+  .la.is-rest .la-track { background: rgba(255, 255, 255, 0.2); }
+
+  .la-track i {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: #000;
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), background 0.26s ease;
+  }
+
+  .la.is-rest .la-track i { background: #fff; }
+
+  /* option B: kicker, then two columns split by a rule */
+  .la-cols {
+    display: flex;
+    align-items: flex-start;
+    gap: 14px;
+  }
+
+  .la-col { flex: 1 1 0; min-width: 0; }
+
+  .la-col-right {
+    flex: none;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 3px;
+    padding-left: 15px;
+    border-left: 1px solid rgba(0, 0, 0, 0.1);
+    transition: border-color 0.26s ease;
+  }
+
+  .la.is-rest .la-col-right { border-left-color: rgba(255, 255, 255, 0.18); }
+
+  .la-kicker {
+    font-size: 10.5px;
+    font-weight: 650;
+    letter-spacing: 1.5px;
+    line-height: 1.2;
+    text-transform: uppercase;
+    color: var(--quiet);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: color 0.26s ease;
+  }
+
+  .la.is-rest .la-kicker { color: var(--quiet-rest); }
+
+  .la-kicker + .la-exercise { margin-top: 5px; }
+
+  /* ---------- Dynamic Island ---------- */
+
+  .island-section { margin-top: 78px; }
+
+  .island-copy {
+    margin: 0 0 22px;
+    max-width: 620px;
+    font-size: 13px;
+    line-height: 1.55;
+    color: var(--muted);
+  }
+
+  .island-stage {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    gap: 34px;
+    padding: 40px 36px;
+    border-radius: 32px;
+    background: var(--wallpaper);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+  }
+
+  .island-col {
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+
+  .island-label {
+    font-size: 10px;
+    font-weight: 650;
+    letter-spacing: 1.4px;
+    text-transform: uppercase;
+    color: rgba(255, 255, 255, 0.45);
+  }
+
+  .island {
+    background: #000;
+    color: #fff;
+  }
+
+  .island-minimal {
+    width: 37px;
+    height: 37px;
+    border-radius: 999px;
+    display: grid;
+    place-items: center;
+  }
+
+  .island-compact {
+    width: 126px;
+    height: 37px;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 13px;
+  }
+
+  .compact-timer {
+    font-size: 14px;
+    font-weight: 650;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -0.2px;
+  }
+
+  .island-expanded {
+    width: 371px;
+    height: 160px;
+    border-radius: 44px;
+    padding: 13px 18px 15px;
+    display: flex;
+    flex-direction: column;
+    justify-content: space-between;
+  }
+
+  .isl-top {
+    display: grid;
+    grid-template-columns: 1fr 118px 1fr;
+    align-items: start;
+    min-height: 74px;
+  }
+
+  .isl-lead { grid-column: 1; min-width: 0; }
+
+  .isl-trail {
+    grid-column: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    gap: 2px;
+  }
+
+  .isl-badge {
+    display: inline-block;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    line-height: 1;
+    text-transform: uppercase;
+    color: #000;
+    background: var(--lime);
+    padding: 3px 7px;
+    border-radius: 999px;
+    transition: background 0.26s ease;
+  }
+
+  .island.is-rest .isl-badge { background: #fff; }
+
+  .isl-exercise {
+    margin-top: 6px;
+    font-size: 15px;
+    font-weight: 600;
+    letter-spacing: -0.2px;
+    line-height: 1.12;
+    display: block;
+    max-height: 2.24em;
+    overflow: hidden;
+  }
+
+  .isl-timer {
+    font-size: 26px;
+    font-weight: 700;
+    letter-spacing: -0.7px;
+    line-height: 1;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .isl-set {
+    font-size: 11px;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.6);
+    white-space: nowrap;
+  }
+
+  .isl-bottom { display: flex; flex-direction: column; gap: 7px; }
+
+  .isl-row {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    font-size: 11.5px;
+    line-height: 1.2;
+    color: rgba(255, 255, 255, 0.6);
+  }
+
+  .isl-total {
+    text-transform: uppercase;
+    letter-spacing: 0.9px;
+    font-size: 10px;
+  }
+
+  .isl-total b {
+    font-size: 11.5px;
+    font-weight: 650;
+    letter-spacing: 0;
+    color: #fff;
+    font-variant-numeric: tabular-nums;
+  }
+
+  .isl-track {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.2);
+    overflow: hidden;
+  }
+
+  .isl-track i {
+    display: block;
+    height: 100%;
+    border-radius: 2px;
+    background: var(--lime);
+    transition: width 0.5s cubic-bezier(0.4, 0, 0.2, 1), background 0.26s ease;
+  }
+
+  .island.is-rest .isl-track i { background: #fff; }
+
+  footer {
+    margin-top: 56px;
+    padding-top: 20px;
+    border-top: 1px solid var(--line);
+    font-size: 12px;
+    line-height: 1.6;
+    color: var(--muted);
+    max-width: 660px;
+  }
+
+  @media (max-width: 520px) {
+    .page { padding: 36px 18px 56px; }
+    .case, .phone { width: 100%; }
+    .phone { padding: 8px; border-radius: 44px; }
+    .screen { height: 640px; border-radius: 36px; }
+    h1 { font-size: 27px; }
+    .island-expanded { width: 100%; max-width: 371px; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <div class="eyebrow">GymPal · iOS Live Activity</div>
+  <h1>Two ways to unclump the workout card</h1>
+  <p class="lede">
+    The same content, arranged so the exercise keeps the left edge and the clocks live
+    on the right. Type sizes, colours and card padding are the real ones from the widget.
+  </p>
+
+  <div class="toolbar">
+    <div class="seg" role="group" aria-label="Workout phase">
+      <button type="button" data-phase="work" aria-pressed="true">Active set</button>
+      <button type="button" data-phase="rest" aria-pressed="false">Rest</button>
+    </div>
+    <span class="toolbar-note">Flip the phase — the card inverts, exactly like the app does.</span>
+  </div>
+
+  <div class="cases">
+    <section class="case">
+      <div class="case-head">
+        <div class="case-title"><span class="tag">Option A</span> Right rail <span class="tag soft">recommended</span></div>
+        <p class="case-note">
+          Your note, literally: the clock and the phase sit in one right-hand rail, on the
+          same two lines as the exercise and its set. The workout total moves down to the
+          footer. Nothing shares a line with the clock.
+        </p>
+      </div>
+
+      <div class="phone">
+        <div class="screen">
+          <div class="status">
+            <span class="status-time">9:41</span>
+            <svg class="status-icons" width="66" height="12" viewBox="0 0 66 12" fill="none" aria-hidden="true">
+              <g fill="#fff">
+                <rect x="0" y="8" width="3" height="4" rx="1"></rect>
+                <rect x="5" y="5.6" width="3" height="6.4" rx="1"></rect>
+                <rect x="10" y="3.2" width="3" height="8.8" rx="1"></rect>
+                <rect x="15" y="0.8" width="3" height="11.2" rx="1"></rect>
+                <path d="M26 4.3c1.4 0 2.6.5 3.5 1.4l.9-1A6.4 6.4 0 0 0 26 2.7a6.4 6.4 0 0 0-4.4 2l.9 1c.9-.9 2.1-1.4 3.5-1.4Z" transform="translate(-1 0)"></path>
+                <path d="M25 7.6c.6 0 1.2.2 1.6.6L25 9.8l-1.6-1.6c.4-.4 1-.6 1.6-.6Z"></path>
+                <rect x="37" y="1.2" width="20" height="9.6" rx="2.8" stroke="#fff" stroke-opacity=".4"></rect>
+                <rect x="39" y="3.2" width="13.5" height="5.6" rx="1.5"></rect>
+                <path d="M59.2 4.3v3.4c.9-.2 1.5-.9 1.5-1.7s-.6-1.5-1.5-1.7Z" fill-opacity=".45"></path>
+              </g>
+            </svg>
+          </div>
+          <div class="cutout"></div>
+
+          <div class="lock">
+            <div class="lock-date">Thursday, November 26</div>
+            <div class="lock-time">9:41</div>
+
+            <div class="lock-slot">
+              <article class="la" data-js="card" aria-label="Live Activity preview">
+                <div class="la-head">
+                  <div class="la-main">
+                    <div class="la-exercise">Bench Press</div>
+                    <div class="la-set" data-js="set">Set 2 of 4 · 4 × 8–12</div>
+                  </div>
+                  <div class="la-rail">
+                    <div class="la-timer" data-js="timer">00:42</div>
+                    <span class="la-badge" data-js="phase">Active</span>
+                  </div>
+                </div>
+                <div class="la-foot">
+                  <span class="la-workout">Push Day</span>
+                  <span class="la-total">Total <b data-js="total">18:24</b></span>
+                </div>
+                <div class="la-track"><i data-js="progress" style="width: 25%"></i></div>
+              </article>
+            </div>
+
+            <div class="lock-bottom">
+              <span class="orb">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z"></path>
+                </svg>
+              </span>
+              <span class="orb">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 8h3l1.5-2h9L18 8h3v11H3z"></path>
+                  <circle cx="12" cy="13.5" r="3.4"></circle>
+                </svg>
+              </span>
+            </div>
+            <div class="home-bar"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <section class="case">
+      <div class="case-head">
+        <div class="case-title"><span class="tag soft">Option B</span> Two columns</div>
+        <p class="case-note">
+          The workout name becomes a kicker, so the right column owns phase, clock and
+          total together, split from the left by a hairline. Denser and more dashboard-like;
+          the card is a little taller than A.
+        </p>
+      </div>
+
+      <div class="phone">
+        <div class="screen">
+          <div class="status">
+            <span class="status-time">9:41</span>
+            <svg class="status-icons" width="66" height="12" viewBox="0 0 66 12" fill="none" aria-hidden="true">
+              <g fill="#fff">
+                <rect x="0" y="8" width="3" height="4" rx="1"></rect>
+                <rect x="5" y="5.6" width="3" height="6.4" rx="1"></rect>
+                <rect x="10" y="3.2" width="3" height="8.8" rx="1"></rect>
+                <rect x="15" y="0.8" width="3" height="11.2" rx="1"></rect>
+                <path d="M26 4.3c1.4 0 2.6.5 3.5 1.4l.9-1A6.4 6.4 0 0 0 26 2.7a6.4 6.4 0 0 0-4.4 2l.9 1c.9-.9 2.1-1.4 3.5-1.4Z" transform="translate(-1 0)"></path>
+                <path d="M25 7.6c.6 0 1.2.2 1.6.6L25 9.8l-1.6-1.6c.4-.4 1-.6 1.6-.6Z"></path>
+                <rect x="37" y="1.2" width="20" height="9.6" rx="2.8" stroke="#fff" stroke-opacity=".4"></rect>
+                <rect x="39" y="3.2" width="13.5" height="5.6" rx="1.5"></rect>
+                <path d="M59.2 4.3v3.4c.9-.2 1.5-.9 1.5-1.7s-.6-1.5-1.5-1.7Z" fill-opacity=".45"></path>
+              </g>
+            </svg>
+          </div>
+          <div class="cutout"></div>
+
+          <div class="lock">
+            <div class="lock-date">Thursday, November 26</div>
+            <div class="lock-time">9:41</div>
+
+            <div class="lock-slot">
+              <article class="la la-split" data-js="card" aria-label="Live Activity preview">
+                <div class="la-cols">
+                  <div class="la-col">
+                    <div class="la-kicker">Push Day</div>
+                    <div class="la-exercise">Bench Press</div>
+                    <div class="la-set" data-js="set">Set 2 of 4 · 4 × 8–12</div>
+                  </div>
+                  <div class="la-col la-col-right">
+                    <span class="la-badge" data-js="phase">Active</span>
+                    <div class="la-timer" data-js="timer">00:42</div>
+                    <span class="la-total">Total <b data-js="total">18:24</b></span>
+                  </div>
+                </div>
+                <div class="la-track"><i data-js="progress" style="width: 25%"></i></div>
+              </article>
+            </div>
+
+            <div class="lock-bottom">
+              <span class="orb">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M13 2 4.5 13.5H11l-1 8.5 9-12h-6.5L13 2Z"></path>
+                </svg>
+              </span>
+              <span class="orb">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                  <path d="M3 8h3l1.5-2h9L18 8h3v11H3z"></path>
+                  <circle cx="12" cy="13.5" r="3.4"></circle>
+                </svg>
+              </span>
+            </div>
+            <div class="home-bar"></div>
+          </div>
+        </div>
+      </div>
+    </section>
+  </div>
+
+  <section class="island-section">
+    <div class="case-head">
+      <div class="case-title">Dynamic Island</div>
+    </div>
+    <p class="island-copy">
+      The expanded island follows the same logic as A: exercise on the left, clock and set on
+      the right, prescription and workout total along the bottom. Both are shown at real size.
+    </p>
+
+    <div class="island-stage">
+      <div class="island-col">
+        <div class="island island-minimal">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" stroke-width="2.3" stroke-linecap="round" aria-hidden="true">
+            <path d="M5 9v6M8 6.5v11M16 6.5v11M19 9v6M8 12h8"></path>
+          </svg>
+        </div>
+        <div class="island-label">Minimal</div>
+      </div>
+
+      <div class="island-col">
+        <div class="island island-compact">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="var(--lime)" stroke-width="2.3" stroke-linecap="round" aria-hidden="true">
+            <path d="M5 9v6M8 6.5v11M16 6.5v11M19 9v6M8 12h8"></path>
+          </svg>
+          <span class="compact-timer" data-js="total">18:24</span>
+        </div>
+        <div class="island-label">Compact</div>
+      </div>
+
+      <div class="island-col">
+        <div class="island island-expanded" data-js="island">
+          <div class="isl-top">
+            <div class="isl-lead">
+              <span class="isl-badge" data-js="phase">Active</span>
+              <div class="isl-exercise">Bench Press</div>
+            </div>
+            <div class="isl-trail">
+              <div class="isl-timer" data-js="timer">00:42</div>
+              <div class="isl-set" data-js="set">Set 2 of 4</div>
+            </div>
+          </div>
+          <div class="isl-bottom">
+            <div class="isl-row">
+              <span>4 × 8–12</span>
+              <span class="isl-total">Total <b data-js="total">18:24</b></span>
+            </div>
+            <div class="isl-track"><i data-js="progress" style="width: 25%"></i></div>
+          </div>
+        </div>
+        <div class="island-label">Expanded</div>
+      </div>
+    </div>
+  </section>
+
+  <footer>
+    Static mocks only — the app is untouched. The island keeps its current information split;
+    only the Lock Screen banner is up for a real change. Say which option to take (or mix them)
+    and I will move the SwiftUI widget over to it.
+  </footer>
+</div>
+
+<script>
+  const phases = {
+    work: {
+      phase: 'Active',
+      timer: '00:42',
+      set: 'Set 2 of 4 · 4 × 8–12',
+      islandSet: 'Set 2 of 4',
+      total: '18:24',
+      progress: '25%',
+    },
+    rest: {
+      phase: 'Rest',
+      timer: '00:58',
+      set: 'Set 2 of 4 · 4 × 8–12',
+      islandSet: 'Set 2 of 4',
+      total: '19:22',
+      progress: '50%',
+    },
+  };
+
+  const buttons = Array.from(document.querySelectorAll('[data-phase]'));
+
+  function render(name) {
+    const state = phases[name];
+    const resting = name === 'rest';
+
+    document.querySelectorAll('[data-js="card"]').forEach((card) => {
+      card.classList.toggle('is-rest', resting);
+    });
+
+    const island = document.querySelector('[data-js="island"]');
+    if (island) island.classList.toggle('is-rest', resting);
+
+    document.querySelectorAll('[data-js="phase"]').forEach((el) => {
+      el.textContent = state.phase;
+    });
+    document.querySelectorAll('[data-js="timer"]').forEach((el) => {
+      el.textContent = state.timer;
+    });
+    document.querySelectorAll('[data-js="total"]').forEach((el) => {
+      el.textContent = state.total;
+    });
+    document.querySelectorAll('[data-js="progress"]').forEach((el) => {
+      el.style.width = state.progress;
+    });
+
+    const bannerSet = document.querySelector('.la .la-set');
+    if (bannerSet) bannerSet.textContent = state.set;
+
+    const islandSet = document.querySelector('.isl-set');
+    if (islandSet) islandSet.textContent = state.islandSet;
+
+    buttons.forEach((button) => {
+      button.setAttribute('aria-pressed', String(button.dataset.phase === name));
+    });
+  }
+
+  buttons.forEach((button) => {
+    button.addEventListener('click', () => render(button.dataset.phase));
+  });
+</script>
+</body>
+</html>

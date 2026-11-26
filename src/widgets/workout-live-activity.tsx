@@ -20,6 +20,10 @@ import type { WorkoutActivityProps } from '@/workouts/workout-activity';
 /**
  * Native Lock Screen and Dynamic Island views for an active workout.
  *
+ * The banner reads in two columns: the exercise and its set keep the left edge,
+ * while the clock and the phase share a right-hand rail on the same two lines.
+ * The workout name and its total sit in a quiet footer above the progress bar.
+ *
  * The timer ranges are rendered by SwiftUI, so both clocks keep ticking while
  * JavaScript is suspended. Active uses the app's white canvas; rest uses its
  * black inverted canvas. The Dynamic Island remains Apple's black system
@@ -74,6 +78,18 @@ const WorkoutLiveActivity = (
     );
   };
 
+  const totalLabel = (ink: string) => (
+    <Text
+      modifiers={[
+        font({ size: 10, weight: 'semibold' }),
+        kerning(0.9),
+        textCase('uppercase'),
+        foregroundStyle(ink),
+      ]}>
+      Total
+    </Text>
+  );
+
   const phaseTimer = (
     size: number,
     ink: string,
@@ -118,33 +134,43 @@ const WorkoutLiveActivity = (
     banner: (
       <VStack
         alignment="leading"
-        spacing={8}
+        spacing={9}
         modifiers={[
           padding({ all: 16 }),
           activityBackgroundTint(cardBackground),
         ]}>
-        <HStack alignment="center" spacing={8}>
-          {phaseLabel(cardInk, cardQuiet)}
+        <HStack alignment="firstTextBaseline" spacing={14}>
+          <VStack alignment="leading" spacing={3}>
+            <Text
+              modifiers={[
+                font({ size: 19, weight: 'semibold' }),
+                kerning(-0.2),
+                foregroundStyle(cardInk),
+                lineLimit(1),
+              ]}>
+              {props.exercise}
+            </Text>
+            <Text
+              modifiers={[
+                font({ size: 13 }),
+                foregroundStyle(cardQuiet),
+                lineLimit(1),
+              ]}>
+              {props.setLabel} · {props.setsRepsLabel}
+            </Text>
+          </VStack>
           <Spacer />
-          {phaseTimer(34, cardInk, 'bold')}
+          <VStack alignment="trailing" spacing={4}>
+            {phaseTimer(34, cardInk, 'bold')}
+            {phaseLabel(cardInk, cardQuiet)}
+          </VStack>
         </HStack>
-        <Text
-          modifiers={[
-            font({ size: 19, weight: 'semibold' }),
-            foregroundStyle(cardInk),
-            lineLimit(1),
-          ]}>
-          {props.exercise}
-        </Text>
-        <Text modifiers={[font({ size: 13 }), foregroundStyle(cardQuiet), lineLimit(1)]}>
-          {props.setLabel} · {props.setsRepsLabel}
-        </Text>
-        <HStack alignment="center" spacing={6}>
+        <HStack alignment="firstTextBaseline" spacing={6}>
           <Text modifiers={[font({ size: 12 }), foregroundStyle(cardQuiet), lineLimit(1)]}>
             {props.workout}
           </Text>
           <Spacer />
-          <Text modifiers={[font({ size: 12 }), foregroundStyle(cardQuiet)]}>Total</Text>
+          {totalLabel(cardQuiet)}
           {workoutTimer(12, cardInk)}
         </HStack>
         {progress(cardInk)}
@@ -159,8 +185,9 @@ const WorkoutLiveActivity = (
         <Text
           modifiers={[
             font({ size: 15, weight: 'semibold' }),
+            kerning(-0.2),
             foregroundStyle(islandInk),
-            lineLimit(1),
+            lineLimit(2),
           ]}>
           {props.exercise}
         </Text>
@@ -180,15 +207,16 @@ const WorkoutLiveActivity = (
       </VStack>
     ),
     expandedBottom: (
-      <VStack spacing={8} modifiers={[padding({ horizontal: 12, bottom: 12 })]}>
-        <HStack alignment="center" spacing={6}>
+      <VStack alignment="leading" spacing={8} modifiers={[padding({ horizontal: 12, bottom: 12 })]}>
+        <HStack alignment="firstTextBaseline" spacing={6}>
           <Text modifiers={[font({ size: 12 }), foregroundStyle(islandQuiet), lineLimit(1)]}>
-            {props.setsRepsLabel} · Total
+            {props.setsRepsLabel}
           </Text>
           <Spacer />
+          {totalLabel(islandQuiet)}
           {workoutTimer(12, islandInk)}
         </HStack>
-        {progress(islandInk)}
+        {progress(islandAccent)}
       </VStack>
     ),
   };
